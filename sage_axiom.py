@@ -13,6 +13,7 @@ Requisitos: TensorFlow >= 2.8
 
 import tensorflow as tf
 import numpy as np
+import logging
 import sys
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
