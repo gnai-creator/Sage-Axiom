@@ -142,7 +142,8 @@ class ChoiceHypothesisModule(tf.keras.layers.Layer):
 class TaskPainSystem(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.threshold = tf.Variable(1.0, trainable=True)
+        #self.threshold = tf.Variable(1.0, trainable=True)
+        self.threshold = tf.Variable(0.03 + tf.random.uniform([], 0.0, 0.02), trainable=True)
         self.sensitivity = tf.Variable(tf.ones([1, 1, 1, 10]) * 0.01, trainable=False)
         self.alpha_layer = tf.keras.layers.Dense(1, activation='sigmoid')
         self.alpha_noise = tf.keras.layers.GaussianNoise(0.05)  # ou Dropout(0.1), se preferir
