@@ -32,16 +32,16 @@ class SageAxiom(tf.keras.Model):
             tf.keras.layers.Conv2D(10, 1)
         ])
         self.refiner = OutputRefinement(hidden_dim)
-        self.gate_scale = tf.keras.layers.Dense(hidden_dim, activation='sigmoid')
+        self.gate_scale = tf.keras.layers.Dense(hidden_dim, activation='sigmoid', name="gate_scale")
         self.fallback = tf.keras.layers.Conv2D(10, 1)
 
         # === Chorus Core ===
-        self.chorus_encoder = tf.keras.layers.Dense(hidden_dim, activation='relu')
+        self.chorus_encoder = tf.keras.layers.Dense(hidden_dim, activation='relu', name="dense_5180")
         self.synthesizer = SpectralSynthesizer(hidden_dim)
         self.crystallizer = IdentityCrystallizer(hidden_dim)
         self.harvester = SymbolicContradictionHarvester(hidden_dim)
         self.observer = ReflexiveObserver(hidden_dim)
-        self.chorus_decoder = tf.keras.layers.Dense(10)
+        self.chorus_decoder = tf.keras.layers.Dense(10, name="chorus_decoder")
 
         self.loss_tracker = tf.keras.metrics.Mean(name="loss")
 
