@@ -65,9 +65,43 @@ def prepare_few_shot_from_task(task_json, shot=3, augment=False, include_origina
 
     return x_seq, y_seq, test_x, test_input, expected_output
 
+def run_task_set(task_set, model, optimizer, loss_fn, phase_name=""):
+    correct_pixels = total_pixels = perfect_matches = total_tasks = 0
+
+    for task_id, task in tqdm(task_set.items(), desc=f"{phase_name} Tasks"):
+        try:
+            x_seq, y_seq, test_x, raw_input, expected_output = prepare_few_shot_from_task(task, shot=5, augment=True)
+            _ = model(x_seq, y_seq, training=False)
+
+            for epoch in range(300):
+                with tf.GradientTape() as tape:
+                    logits = model(x_seq, y_seq, training=True)
+                    loss_main = loss_fn(y_seq[:, -1], logits)
+                    loss = loss_main + tf.add_n(model.losses)
+                grads = tape.gradient(loss, model.trainable_variables)
+                optimizer.apply_gradients(zip(grads, model.trainable_variables))
+
+            pred = model(test_x, training=False)
+            pred_img = tf.argmax(pred[0], axis=-1).numpy()
+
+            expected_output_np = np.array(expected_output)
+            correct_pixels += np.sum(pred_img == expected_output_np)
+            total_pixels += expected_output_np.size
+            if np.allclose(pred_img, expected_output):
+                perfect_matches += 1
+            total_tasks += 1
+        except Exception as e:
+            print(f"Erro em {phase_name} task {task_id}: {e}")
+
+    return correct_pixels, total_pixels, perfect_matches, total_tasks
+
 def main():
     start_time = time.time()
 
+    with open("data/arc-agi_training-challenges.json", "r") as f:
+        train_tasks = json.load(f)
+    with open("data/arc-agi_evaluation-challenges.json", "r") as f:
+        eval_tasks = json.load(f)
     with open("data/arc-agi_test_challenges.json", "r") as f:
         test_tasks = json.load(f)
 
@@ -75,68 +109,35 @@ def main():
     optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4)
     loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-    sample_keys = list(test_tasks.keys())[:5]
-    correct_pixels = total_pixels = perfect_matches = total_tasks = 0
+    phases = [
+        ("Training", train_tasks),
+        ("Evaluation", eval_tasks),
+        ("Testing", test_tasks),
+    ]
 
-    for task_id in tqdm(sample_keys):
-        task = test_tasks[task_id]
-        x_seq, y_seq, test_x, raw_input, expected_output = prepare_few_shot_from_task(task, shot=5, augment=True)
+    grand_total_correct = grand_total_pixels = grand_total_matches = grand_total_tasks = 0
 
-        print(f"\n== Task: {task_id} ==")
-        print("x_seq shape:", x_seq.shape)
-        print("y_seq shape:", y_seq.shape)
+    for name, tasks in phases:
+        correct, total, matches, num_tasks = run_task_set(tasks, model, optimizer, loss_fn, name)
+        print(f"\n{name} Results:")
+        if total:
+            print(f"Pixel Accuracy: {correct / total:.4%}")
+        if num_tasks:
+            print(f"Perfect Match Accuracy: {matches / num_tasks:.4%}")
 
-        _ = model(x_seq, y_seq, training=False)
-
-        for epoch in range(300):
-            with tf.GradientTape() as tape:
-                logits = model(x_seq, y_seq, training=True)
-                loss_main = loss_fn(y_seq[:, -1], logits)
-                loss = loss_main + tf.add_n(model.losses)
-            grads = tape.gradient(loss, model.trainable_variables)
-            optimizer.apply_gradients(zip(grads, model.trainable_variables))
-
-        pred = model(test_x, training=False)
-        pred_img = tf.argmax(pred[0], axis=-1).numpy()
-
-        expected_output_np = np.array(expected_output)
-        correct_pixels += np.sum(pred_img == expected_output_np)
-        total_pixels += expected_output_np.size
-        if np.allclose(pred_img, expected_output):
-            perfect_matches += 1
-        total_tasks += 1
-
-        plt.figure(figsize=(15, 4))
-        plt.suptitle(f"Task {task_id}", fontsize=14)
-
-        plt.subplot(1, 4, 1)
-        plt.imshow(raw_input, cmap='tab10', vmin=0, vmax=9)
-        plt.title("Input")
-
-        plt.subplot(1, 4, 2)
-        plt.imshow(expected_output_np, cmap='tab10', vmin=0, vmax=9)
-        plt.title("Expected Output")
-
-        plt.subplot(1, 4, 3)
-        pred_confidence = tf.nn.softmax(pred[0], axis=-1).numpy()
-        heatmap = np.max(pred_confidence, axis=-1)
-        sns.heatmap(heatmap, vmin=0, vmax=1, cmap='viridis')
-        plt.title("Confidence Heatmap")
-
-        plt.subplot(1, 4, 4)
-        plt.imshow(pred_img, cmap='tab10', vmin=0, vmax=9)
-        plt.title("Predicted")
-
-        plt.show()
+        grand_total_correct += correct
+        grand_total_pixels += total
+        grand_total_matches += matches
+        grand_total_tasks += num_tasks
 
     elapsed = time.time() - start_time
-
-    if total_pixels:
-        print(f"Pixel Accuracy: {correct_pixels / total_pixels:.4%}")
-    if total_tasks:
-        print(f"Perfect Match Accuracy: {perfect_matches / total_tasks:.4%}")
+    print(f"\n=== Global Metrics ===")
+    if grand_total_pixels:
+        print(f"Total Pixel Accuracy: {grand_total_correct / grand_total_pixels:.4%}")
+    if grand_total_tasks:
+        print(f"Total Perfect Match Accuracy: {grand_total_matches / grand_total_tasks:.4%}")
 
     print(f"\n⏱️ Total time elapsed: {int(elapsed // 3600)}h {int((elapsed % 3600) // 60)}min ({elapsed:.2f} seconds)")
-  
+
 if __name__ == "__main__":
     main()
