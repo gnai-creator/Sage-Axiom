@@ -143,8 +143,9 @@ class TaskPainSystem(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
         self.threshold = tf.Variable(1.0, trainable=True)
-        self.sensitivity = tf.Variable(tf.ones([1, 1, 1, 10]), trainable=True)
+        self.sensitivity = tf.Variable(tf.ones([1, 1, 1, 10]) * 0.01, trainable=False)
         self.alpha_layer = tf.keras.layers.Dense(1, activation='sigmoid')
+        self.alpha_noise = tf.keras.layers.GaussianNoise(0.05)  # ou Dropout(0.1), se preferir
 
         self.doubt_pool = tf.keras.layers.GlobalAveragePooling2D()
         self.doubt_dense1 = tf.keras.layers.Dense(dim, activation='relu', name='dense_9')
@@ -169,19 +170,24 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.empathy = None
         self.flexibility = None
 
-    def call(self, pred, expected, blended=None):
+    def call(self, pred, expected, blended=None, training=False):
         diff = tf.square(pred - expected)
-        raw_pain = tf.reduce_mean(self.sensitivity * diff, axis=[1, 2, 3], keepdims=True)
+        diff = tf.clip_by_value(diff, 0.0, 1.0)
+        raw_pain = tf.reduce_mean(tf.sqrt(self.sensitivity * diff + 1e-6), axis=[1,2,3], keepdims=True)
         mood_mod = 1.0 + 0.01 * tf.sin(raw_pain * 3.14)  # Pequena oscilação
         self.per_sample_pain = raw_pain * mood_mod
 
-        exploration = tf.sigmoid((self.per_sample_pain - 8.0) * 0.1)
+        exploration = tf.sigmoid((self.per_sample_pain - 3.0) * 0.2)
         osc = 1.0 + 0.05 * tf.cos(self.per_sample_pain)
-        self.exploration_gate = tf.clip_by_value(exploration + 0.05 * tf.cos(self.per_sample_pain), 0.0, 0.98)
+        self.exploration_gate = tf.clip_by_value(exploration * osc, 0.0, 0.98)
         
+        
+
         self.adjusted_pain = self.per_sample_pain / (1.0 + 0.5 * self.exploration_gate + 1e-6)
         self.gate = tf.sigmoid((self.adjusted_pain - self.threshold) * 2.5)
+        
         self.alpha = self.alpha_layer(self.exploration_gate)
+        self.alpha = self.alpha_noise(self.alpha, training=training)  # Ativa ruído só em modo treinamento
 
         alpha_loss = 0.01 * tf.reduce_mean(tf.square(self.alpha - 0.5))
         gate_reg_loss = 0.01 * tf.reduce_mean(tf.square(self.exploration_gate - 0.5))
