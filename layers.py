@@ -191,7 +191,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
         doubt_loss = 0.01 * tf.reduce_mean(tf.square(doubt_repr)) + 0.01 * tf.reduce_mean(doubt_score)
         self.add_loss(doubt_loss)
 
-        tf.print(f"Pain: {self.per_sample_pain.numpy()}, Adjusted: {self.adjusted_pain.numpy()}, Gate: {self.gate.numpy()}, Exploration: {self.exploration_gate.numpy()}, Alpha: {self.alpha.numpy()}")
+        tf.print("Pain:", self.per_sample_pain, "Adjusted:", self.adjusted_pain, "Gate:", self.gate, "Exploration:", self.exploration_gate, "Alpha:", self.alpha)
 
         return self.adjusted_pain, self.gate, self.exploration_gate, self.alpha
 
