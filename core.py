@@ -37,7 +37,6 @@ class SageAxiom(tf.keras.Model):
 
         # === Chorus Core ===
         self.chorus_encoder = tf.keras.layers.Dense(hidden_dim, activation='relu', name="dense_5180")
-        self.synthesizer = SpectralSynthesizer(hidden_dim)
         self.crystallizer = IdentityCrystallizer(hidden_dim)
         self.harvester = SymbolicContradictionHarvester(hidden_dim)
         self.observer = ReflexiveObserver(hidden_dim)
@@ -101,8 +100,7 @@ class SageAxiom(tf.keras.Model):
         last_frame = x_seq[:, -1]
         chorus_input = self.final_dense(tf.reduce_mean(last_frame, axis=[1, 2]))
         x_encoded = self.chorus_encoder(chorus_input)
-        spectral = self.synthesizer(x_encoded)
-        identity = self.crystallizer(spectral)
+        identity = self.crystallizer(x_encoded)
         contradiction = self.harvester(identity)
         reflective = self.observer(contradiction)
         chorus_output = self.chorus_decoder(reflective)
@@ -130,6 +128,8 @@ class SageAxiom(tf.keras.Model):
             chorus_vars = self.chorus_encoder.trainable_variables + self.final_dense.trainable_variables
             chorus_weight_penalty = 0.001 * tf.add_n([tf.reduce_sum(tf.square(v)) for v in chorus_vars])
             self.add_loss(chorus_weight_penalty)
+            crystallizer_loss = 0.001 * tf.reduce_sum(tf.square(self.crystallizer.state))
+            self.add_loss(crystallizer_loss)
         
             total_loss = base_loss + sym_loss + trait_loss + tf.add_n(self.losses)
             self.loss_tracker.update_state(total_loss)
