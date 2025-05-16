@@ -45,7 +45,7 @@ class SageAxiom(tf.keras.Model):
 
         self.loss_tracker = tf.keras.metrics.Mean(name="loss")
 
-        self.flat_dense1 = tf.keras.layers.Dense(self.hidden_dim, activation='relu', name="dense_6")
+        self.flat_dense1 = tf.keras.layers.Dense(self.hidden_dim, activation='relu', name="dense_5158")
         self.flat_dense2 = tf.keras.layers.Dense(self.hidden_dim, name="dense_7")
 
     def call(self, x_seq, y_seq=None, training=False):
