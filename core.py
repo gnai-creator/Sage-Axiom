@@ -1,6 +1,5 @@
 # core.py
 import tensorflow as tf
-import logging
 from layers import *
 
 class SageAxiom(tf.keras.Model):
@@ -9,11 +8,12 @@ class SageAxiom(tf.keras.Model):
         self.hidden_dim = hidden_dim
         self.use_hard_choice = use_hard_choice
 
-        # === Paladin Mode ===
         self.early_proj = tf.keras.layers.Conv2D(hidden_dim, 1, activation='relu')
         self.encoder = EnhancedEncoder(hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
-        self.pos_enc = PositionalEncoding2D(2)  # Will now be used earlier
+        self.pos_enc = PositionalEncoding2D(2)
+        self.rotation = LearnedRotation()
+
         self.bbox_penalty = BoundingBoxDiscipline()
         self.attn = MultiHeadAttentionWrapper(hidden_dim, heads=8)
         self.agent = tf.keras.layers.GRUCell(hidden_dim)
@@ -22,6 +22,7 @@ class SageAxiom(tf.keras.Model):
         self.chooser = ChoiceHypothesisModule(hidden_dim)
         self.pain_system = TaskPainSystem(hidden_dim)
         self.attend_memory = AttentionOverMemory(hidden_dim)
+
         self.projector = tf.keras.layers.Conv2D(hidden_dim, 1)
         self.decoder = tf.keras.Sequential([
             tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
@@ -47,7 +48,6 @@ class SageAxiom(tf.keras.Model):
 
         self.flat_dense1 = tf.keras.layers.Dense(self.hidden_dim, activation='relu', name="dense_5158")
         self.flat_dense2 = tf.keras.layers.Dense(self.hidden_dim, name="dense_7")
-        # self.final_conv = tf.keras.layers.Conv2D(10, 1, padding='same', name="final_logits_conv")
 
     def call(self, x_seq, y_seq=None, training=False):
         batch = tf.shape(x_seq)[0]
@@ -57,10 +57,11 @@ class SageAxiom(tf.keras.Model):
 
         for t in range(T):
             early = self.pos_enc(x_seq[:, t])
-            early = self.early_proj(early)  # agora está com shape [B, 20, 20, 128]
+            early = self.rotation(early)
+            early = self.early_proj(early)
             x = self.encoder(early, training=training)
-
             x = self.norm(x, training=training)
+
             x_flat = tf.keras.layers.GlobalAveragePooling2D()(x)
             x_flat = self.flat_dense1(x_flat)
             x_flat = self.flat_dense2(x_flat)
@@ -78,8 +79,8 @@ class SageAxiom(tf.keras.Model):
         attended = self.attn(projected_input)
         chosen_transform = self.chooser(attended, hard=self.use_hard_choice)
 
-        last_early = self.early_proj(self.pos_enc(x_seq[:, -1]))
-        last_input_encoded = self.encoder(last_early, training=training)
+        last_early = self.rotation(self.pos_enc(x_seq[:, -1]))
+        last_input_encoded = self.encoder(self.early_proj(last_early), training=training)
 
         context_features = tf.concat([state, memory_context], axis=-1)
         channel_gate = self.gate_scale(context_features)
@@ -96,16 +97,12 @@ class SageAxiom(tf.keras.Model):
         refined_logits = self.refiner(output_logits)
         conservative_logits = self.fallback(blended)
         w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
-        paladin_output = w * refined_logits + (1.0 - w) * conservative_logits
-        # final_logits = self.final_conv(paladin_output)
-        final_logits = paladin_output
+        final_logits = w * refined_logits + (1.0 - w) * conservative_logits
+
         print(tf.argmax(final_logits[0], axis=-1))
 
         if y_seq is not None:
             expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
-            # expected_broadcast = tf.reshape(expected_broadcast, tf.shape(final_logits))
-
-            # Regional pain + enthusiasm penalty
             pixelwise_diff = tf.square(expected_broadcast - final_logits)
             spatial_penalty = tf.reduce_mean(tf.nn.relu(tf.reduce_sum(final_logits, axis=-1) - 1.0))
 
@@ -116,12 +113,12 @@ class SageAxiom(tf.keras.Model):
             base_loss = tf.reduce_mean(pixelwise_diff)
             sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
-            regional_penalty = 0.01 * spatial_penalty  # discourage over-prediction area
+            regional_penalty = 0.01 * spatial_penalty
 
             probs = tf.nn.softmax(final_logits)
             bbox_loss = self.bbox_penalty(probs, expected_broadcast)
             tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
-            
+
             total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + tf.add_n(self.losses)
             self.loss_tracker.update_state(total_loss)
 
