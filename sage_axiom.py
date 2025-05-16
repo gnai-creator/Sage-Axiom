@@ -314,12 +314,17 @@ class SymbolicContradictionHarvester(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
         self.query = tf.keras.layers.Dense(dim)
-        self.memory = tf.Variable(tf.zeros([dim]), trainable=False)
+        self.memory = tf.Variable(tf.zeros([1, dim]), trainable=False)
 
     def call(self, x):
+        if len(x.shape) == 1:
+            x = tf.expand_dims(x, axis=0)
+        elif len(x.shape) > 2:
+            x = tf.reshape(x, [x.shape[0], -1])
         q = self.query(x)
         self.memory.assign(0.95 * self.memory + 0.05 * q)
         return q - self.memory
+
 
 class ReflexiveObserver(tf.keras.layers.Layer):
     def __init__(self, dim):
@@ -327,7 +332,12 @@ class ReflexiveObserver(tf.keras.layers.Layer):
         self.meta = tf.keras.layers.Dense(dim, activation='sigmoid')
 
     def call(self, x):
+        if len(x.shape) == 1:
+            x = tf.expand_dims(x, axis=0)
+        elif len(x.shape) > 2:
+            x = tf.reshape(x, [x.shape[0], -1])
         return x * self.meta(x)
+
 
 class HesitationCore(tf.keras.layers.Layer):
     def __init__(self, dim):
@@ -336,10 +346,19 @@ class HesitationCore(tf.keras.layers.Layer):
         self.conflict_gate = tf.keras.layers.Dense(1, activation='sigmoid')
 
     def call(self, x, contradiction):
+        if len(x.shape) == 1:
+            x = tf.expand_dims(x, axis=0)
+        elif len(x.shape) > 2:
+            x = tf.reshape(x, [x.shape[0], -1])
+        if len(contradiction.shape) == 1:
+            contradiction = tf.expand_dims(contradiction, axis=0)
+        elif len(contradiction.shape) > 2:
+            contradiction = tf.reshape(contradiction, [contradiction.shape[0], -1])
         doubt = self.uncertainty_proj(contradiction)
         gate = self.conflict_gate(doubt)
         hesitant_output = x * (1 - gate) + doubt * gate
         return hesitant_output
+
 
 # ========================= Fused Model: SageAxiom =========================
 class SageAxiom(tf.keras.Model):
