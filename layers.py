@@ -80,6 +80,30 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         pos = self.dense(pos)
         return tf.concat([x, pos], axis=-1)
 
+class LearnedRotation(tf.keras.layers.Layer):
+    def __init__(self, dim):
+        super().__init__()
+        self.rotations = [
+            lambda x: x,
+            lambda x: tf.image.rot90(x, k=1),
+            lambda x: tf.image.rot90(x, k=2),
+            lambda x: tf.image.rot90(x, k=3),
+        ]
+        self.selector = tf.keras.layers.Dense(4, activation='softmax')
+
+    def call(self, x):
+        b = tf.shape(x)[0]
+        pooled = tf.reduce_mean(x, axis=[1,2])  # [B, C]
+        weights = self.selector(pooled)         # [B, 4]
+        weights = tf.reshape(weights, [b, 4, 1, 1, 1])  # For broadcasting
+
+        rotated = [rot(x) for rot in self.rotations]
+        stacked = tf.stack(rotated, axis=1)     # [B, 4, H, W, C]
+
+        out = tf.reduce_sum(stacked * weights, axis=1)
+        return out
+
+
 class BoundingBoxDiscipline(tf.keras.layers.Layer):
     def __init__(self, threshold=0.3, penalty_weight=0.05):
         super().__init__()
