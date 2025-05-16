@@ -104,6 +104,8 @@ class SageAxiom(tf.keras.Model):
         spectral = self.synthesizer(x_encoded)
         identity = self.crystallizer(spectral)
         affect = self.crystal(identity)
+        crystal_loss = 0.001 * tf.reduce_mean(tf.square(affect))
+        self.add_loss(crystal_loss)
         contradiction = self.harvester(affect)
         reflective = self.observer(contradiction)
         hesitant = self.hesitator(reflective, contradiction)
