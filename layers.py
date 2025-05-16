@@ -184,13 +184,35 @@ class ChoiceHypothesisModule(tf.keras.layers.Layer):
             weights = tf.reshape(weights, [-1, 4, 1, 1, 1])
             return tf.reduce_sum(stacked * weights, axis=1)
 
+class ThresholdMemory(tf.keras.layers.Layer):
+    def __init__(self, size=32):
+        super().__init__()
+        self.size = size
+        self.history = self.add_weight(
+            shape=(size,), initializer="zeros", trainable=False, name="threshold_history"
+        )
+        self.pointer = self.add_weight(
+            shape=(), initializer="zeros", trainable=False, dtype=tf.int32, name="threshold_ptr"
+        )
 
+    def update(self, new_value):
+        index = self.pointer % self.size
+        updated = tf.tensor_scatter_nd_update(self.history, [[index]], [new_value])
+        self.history.assign(updated)
+        self.pointer.assign_add(1)
+
+    def get_adaptive_threshold(self):
+        valid = self.history[:tf.minimum(self.pointer, self.size)]
+        mean = tf.reduce_mean(valid)
+        std = tf.math.reduce_std(valid)
+        return mean + tf.random.normal([], stddev=std * 0.5)
 
 class TaskPainSystem(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        #self.threshold = tf.Variable(1.0, trainable=True)
-        self.threshold = tf.Variable(0.03 + tf.random.uniform([], 0.0, 0.02), trainable=True)
+        self.threshold_memory = ThresholdMemory()
+        self.threshold = tf.Variable(0.05, trainable=False)  # Initial guess, not trainable anymore
+
         self.sensitivity = tf.Variable(tf.ones([1, 1, 1, 10]) * 0.01, trainable=False)
         self.alpha_layer = tf.keras.layers.Dense(1, activation='sigmoid')
         self.alpha_noise = tf.keras.layers.GaussianNoise(0.05)  # ou Dropout(0.1), se preferir
@@ -219,6 +241,8 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.flexibility = None
 
     def call(self, pred, expected, blended=None, training=False):
+        self.threshold.assign(self.threshold_memory.get_adaptive_threshold())
+
         diff = tf.square(pred - expected)
         diff = tf.clip_by_value(diff, 0.0, 1.0)
         raw_pain = tf.reduce_mean(tf.sqrt(self.sensitivity * diff + 1e-6), axis=[1,2,3], keepdims=True)
@@ -232,6 +256,9 @@ class TaskPainSystem(tf.keras.layers.Layer):
         
 
         self.adjusted_pain = self.per_sample_pain / (1.0 + 0.5 * self.exploration_gate + 1e-6)
+        avg_pain = tf.reduce_mean(self.adjusted_pain)
+        self.threshold_memory.update(avg_pain)
+
         self.gate = tf.sigmoid((self.adjusted_pain - self.threshold) * 2.5)
         
         self.alpha = self.alpha_layer(self.exploration_gate)
