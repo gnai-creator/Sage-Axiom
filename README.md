@@ -42,6 +42,12 @@
   * A soft or hard selector weights which transformation to apply.
   * Penalizes indecision with entropy loss. Because commitment matters.
 
+* **TaskPainSystem + ThresholdMemory:**
+
+  * Calculates task difficulty through "pain" metrics.
+  * Uses `ThresholdMemory` to adapt its ethical judgment dynamically, based on historical trauma (average adjusted pain).
+  * Balances exploration and assertiveness using noise, sigmoid gates, and more emotional instability than you'd think reasonable.
+
 * **Blending:**
 
   * Learns to combine last-step encoder output with transformed memory context.
@@ -58,6 +64,7 @@
   * Bounding box regularization (`BoundingBoxDiscipline`).
   * Symmetry penalty.
   * Trait-based auxiliary loss from the `TaskPainSystem`.
+  * Historical threshold loss from `ThresholdMemory`, because past pain is never forgotten.
 
 ---
 
@@ -84,7 +91,7 @@ Performance improves with longer training, aggressive augmentation, and general 
 * `Pixel Accuracy`: Fraction of pixels correctly predicted.
 * `Perfect Match Accuracy`: Entire grid match across all pixels.
 
-Also logs `Pain`, `Gate`, `Exploration`, and other emotionally unstable diagnostics.
+Also logs `Pain`, `Gate`, `Exploration`, `Threshold`, and other emotionally unstable diagnostics.
 
 ---
 
@@ -100,7 +107,7 @@ Also logs `Pain`, `Gate`, `Exploration`, and other emotionally unstable diagnost
 
 * Train with `shot=3 to 5`, `augment=True` for good generalization.
 * Suggested: 100–300 epochs per task (or until GPU smokes).
-* Keep logs of `Gate`, `Adjusted Pain`, and `BBox Loss` to debug generalization failures.
+* Keep logs of `Gate`, `Adjusted Pain`, `Threshold`, and `BBox Loss` to debug generalization failures.
 
 ---
 
