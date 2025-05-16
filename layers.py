@@ -171,9 +171,14 @@ class TaskPainSystem(tf.keras.layers.Layer):
 
     def call(self, pred, expected, blended=None):
         diff = tf.square(pred - expected)
-        self.per_sample_pain = tf.reduce_mean(self.sensitivity * diff, axis=[1, 2, 3], keepdims=True)
+        raw_pain = tf.reduce_mean(self.sensitivity * diff, axis=[1, 2, 3], keepdims=True)
+        mood_mod = 1.0 + 0.01 * tf.sin(raw_pain * 3.14)  # Pequena oscilação
+        self.per_sample_pain = raw_pain * mood_mod
+
         exploration = tf.sigmoid((self.per_sample_pain - 8.0) * 0.1)
-        self.exploration_gate = tf.clip_by_value(exploration, 0.0, 0.98)
+        osc = 1.0 + 0.05 * tf.cos(self.per_sample_pain)
+        self.exploration_gate = tf.clip_by_value(exploration + 0.05 * tf.cos(self.per_sample_pain), 0.0, 0.98)
+        
         self.adjusted_pain = self.per_sample_pain / (1.0 + 0.5 * self.exploration_gate + 1e-6)
         self.gate = tf.sigmoid((self.adjusted_pain - self.threshold) * 2.5)
         self.alpha = self.alpha_layer(self.exploration_gate)
