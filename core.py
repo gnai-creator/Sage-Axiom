@@ -33,17 +33,14 @@ class SageAxiom(tf.keras.Model):
         ])
         self.refiner = OutputRefinement(hidden_dim)
         self.gate_scale = tf.keras.layers.Dense(hidden_dim, activation='sigmoid')
-        self.doubt = DoubtModule(hidden_dim)
         self.fallback = tf.keras.layers.Conv2D(10, 1)
 
         # === Chorus Core ===
         self.chorus_encoder = tf.keras.layers.Dense(hidden_dim, activation='relu')
         self.synthesizer = SpectralSynthesizer(hidden_dim)
         self.crystallizer = IdentityCrystallizer(hidden_dim)
-        # self.crystal = AffectiveTimeCrystal(hidden_dim)
         self.harvester = SymbolicContradictionHarvester(hidden_dim)
         self.observer = ReflexiveObserver(hidden_dim)
-        # self.hesitator = HesitationCore(hidden_dim)
         self.chorus_decoder = tf.keras.layers.Dense(10)
 
         self.loss_tracker = tf.keras.metrics.Mean(name="loss")
@@ -91,9 +88,6 @@ class SageAxiom(tf.keras.Model):
 
         output_logits = self.decoder(blended)
         refined_logits = self.refiner(output_logits)
-        doubt_score, doubt_repr = self.doubt(blended)
-        doubt_loss = 0.01 * tf.reduce_mean(tf.square(doubt_repr))  # ou alguma penalização mais útil
-        self.add_loss(doubt_loss)
         conservative_logits = self.fallback(blended)
         paladin_output = 0.5 * refined_logits + 0.5 * conservative_logits
 
