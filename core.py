@@ -41,7 +41,7 @@ class SageAxiom(tf.keras.Model):
         self.refine_weight = self.add_weight(
             name="refine_weight",
             shape=(),
-            initializer=tf.keras.initializers.Constant(0.5),
+            initializer=tf.keras.initializers.Constant(0.65),
             trainable=True
         )
 
@@ -57,8 +57,9 @@ class SageAxiom(tf.keras.Model):
 
         for t in range(T):
             early = self.early_proj(x_seq[:, t])
-            early = self.pos_enc(early)  # Apply positional encoding earlier
-            x = self.norm(self.encoder(early, training=training), training=training)
+            x = self.encoder(early, training=training)
+            x = self.pos_enc(x)  # <- aqui é o ponto
+            x = self.norm(x, training=training)
             x_flat = tf.keras.layers.GlobalAveragePooling2D()(x)
             x_flat = self.flat_dense1(x_flat)
             x_flat = self.flat_dense2(x_flat)
