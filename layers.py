@@ -241,16 +241,19 @@ class AttentionOverMemory(tf.keras.layers.Layer):
 class EnhancedEncoder(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.blocks = tf.keras.Sequential([
-            FractalEncoder(dim),
-            FractalBlock(dim),
-            FractalBlock(dim),
-            FractalBlock(dim),
-            tf.keras.layers.Conv2D(dim, 3, padding='same', activation='relu')
-        ])
+        self.f1 = FractalEncoder(dim)
+        self.b1 = FractalBlock(dim)
+        self.b2 = FractalBlock(dim)
+        self.b3 = FractalBlock(dim)
+        self.final_conv = tf.keras.layers.Conv2D(dim, 3, padding='same', activation='relu')
 
-    def call(self, x):
-        return self.blocks(x)
+    def call(self, x, training=False):
+        x = self.f1(x)
+        x = self.b1(x, training=training)
+        x = self.b2(x, training=training)
+        x = self.b3(x, training=training)
+        return self.final_conv(x)
+
 
 class SpectralSynthesizer(tf.keras.layers.Layer):
     def __init__(self, dim):
