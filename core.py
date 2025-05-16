@@ -13,6 +13,7 @@ class SageAxiom(tf.keras.Model):
         self.encoder = EnhancedEncoder(hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
         self.pos_enc = PositionalEncoding2D(2)  # Will now be used earlier
+        self.bbox_penalty = BoundingBoxDiscipline()
         self.attn = MultiHeadAttentionWrapper(hidden_dim, heads=8)
         self.agent = tf.keras.layers.GRUCell(hidden_dim)
         self.memory = EpisodicMemory()
@@ -110,7 +111,10 @@ class SageAxiom(tf.keras.Model):
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
             regional_penalty = 0.01 * spatial_penalty  # discourage over-prediction area
 
-            total_loss = base_loss + sym_loss + trait_loss + regional_penalty + tf.add_n(self.losses)
+            probs = tf.nn.softmax(final_logits)
+            bbox_loss = self.bbox_penalty(probs, expected_broadcast)
+            
+            total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + tf.add_n(self.losses)
             self.loss_tracker.update_state(total_loss)
 
         return final_logits
