@@ -2,6 +2,11 @@
 import tensorflow as tf
 import logging
 
+def compute_auxiliary_loss(output):
+    flipped = tf.image.flip_left_right(output)
+    symmetry_loss = tf.reduce_mean(tf.square(output - flipped))
+    return 0.01 * symmetry_loss
+
 class OutputRefinement(tf.keras.layers.Layer):
     def __init__(self, hidden_dim):
         super().__init__()
@@ -13,27 +18,6 @@ class OutputRefinement(tf.keras.layers.Layer):
 
     def call(self, x):
         return self.refine(x)
-
-class DoubtModule(tf.keras.layers.Layer):
-    def __init__(self, hidden_dim):
-        super().__init__()
-        self.global_pool = tf.keras.layers.GlobalAveragePooling2D()
-        self.dense1 = tf.keras.layers.Dense(hidden_dim, activation='relu', name='dense_8')
-        self.dense2 = tf.keras.layers.Dense(1, activation='sigmoid', name='dense_9')
-
-    def call(self, x):
-        pooled = self.global_pool(x)
-        h = self.dense1(pooled)
-        out = self.dense2(h)
-        # Dummy operation to ensure loss path exists
-        dummy_loss = 0.0 * tf.reduce_sum(out)  # Ensures gradient path
-        self.add_loss(dummy_loss)
-        return out, h
-
-def compute_auxiliary_loss(output):
-    flipped = tf.image.flip_left_right(output)
-    symmetry_loss = tf.reduce_mean(tf.square(output - flipped))
-    return 0.01 * symmetry_loss
 
 class EpisodicMemory(tf.keras.layers.Layer):
     def __init__(self):
@@ -162,6 +146,10 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.sensitivity = tf.Variable(tf.ones([1, 1, 1, 10]), trainable=True)
         self.alpha_layer = tf.keras.layers.Dense(1, activation='sigmoid')
 
+        self.doubt_pool = tf.keras.layers.GlobalAveragePooling2D()
+        self.doubt_dense1 = tf.keras.layers.Dense(dim, activation='relu', name='dense_8')
+        self.doubt_dense2 = tf.keras.layers.Dense(1, activation='sigmoid', name='dense_9')
+
         self.per_sample_pain = None
         self.adjusted_pain = None
         self.exploration_gate = None
@@ -181,7 +169,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.empathy = None
         self.flexibility = None
 
-    def call(self, pred, expected):
+    def call(self, pred, expected, blended=None):
         diff = tf.square(pred - expected)
         self.per_sample_pain = tf.reduce_mean(self.sensitivity * diff, axis=[1, 2, 3], keepdims=True)
         self.exploration_gate = tf.sigmoid((self.per_sample_pain - 5.0) * 0.3)
@@ -194,7 +182,12 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.add_loss(alpha_loss)
         self.add_loss(gate_reg_loss)
 
-        logging.info(f"Pain: {self.per_sample_pain.numpy()}, Adjusted: {self.adjusted_pain.numpy()}, Gate: {self.gate.numpy()}, Exploration: {self.exploration_gate.numpy()}, Alpha: {self.alpha.numpy()}")
+        if blended is not None:
+            pooled = self.doubt_pool(blended)
+            doubt_repr = self.doubt_dense1(pooled)
+            doubt_score = self.doubt_dense2(doubt_repr)
+            doubt_loss = 0.01 * tf.reduce_mean(tf.square(doubt_repr))
+            self.add_loss(doubt_loss)
 
         return self.adjusted_pain, self.gate, self.exploration_gate, self.alpha
 
@@ -290,27 +283,6 @@ class IdentityCrystallizer(tf.keras.layers.Layer):
         self.state.assign(0.9 * self.state + 0.1 * update)
         return self.state
 
-# class AffectiveTimeCrystal(tf.keras.layers.Layer):
-#     def __init__(self, dim):
-#         super().__init__()
-#         self.cycle = self.add_weight(
-#             name='cycle_state',
-#             shape=(1, dim),
-#             initializer='zeros',
-#             trainable=True
-#         )
-
-#         self.projector = tf.keras.layers.Dense(dim, activation='tanh')
-
-#     def call(self, x):
-#         if len(x.shape) == 1:
-#             x = tf.expand_dims(x, axis=0)
-#         elif len(x.shape) > 2:
-#             x = tf.reshape(x, [x.shape[0], -1])
-#         x = tf.stop_gradient(x)
-#         emotion = self.projector(x)
-#         self.cycle.assign(0.8 * self.cycle + 0.2 * emotion)
-#         return self.cycle
 
 class SymbolicContradictionHarvester(tf.keras.layers.Layer):
     def __init__(self, dim):
@@ -340,24 +312,3 @@ class ReflexiveObserver(tf.keras.layers.Layer):
         elif len(x.shape) > 2:
             x = tf.reshape(x, [x.shape[0], -1])
         return x * self.meta(x)
-
-
-# class HesitationCore(tf.keras.layers.Layer):
-#     def __init__(self, dim):
-#         super().__init__()
-#         self.uncertainty_proj = tf.keras.layers.Dense(dim, activation='tanh')
-#         self.conflict_gate = tf.keras.layers.Dense(1, activation='sigmoid')
-
-#     def call(self, x, contradiction):
-#         if len(x.shape) == 1:
-#             x = tf.expand_dims(x, axis=0)
-#         elif len(x.shape) > 2:
-#             x = tf.reshape(x, [x.shape[0], -1])
-#         if len(contradiction.shape) == 1:
-#             contradiction = tf.expand_dims(contradiction, axis=0)
-#         elif len(contradiction.shape) > 2:
-#             contradiction = tf.reshape(contradiction, [contradiction.shape[0], -1])
-#         doubt = self.uncertainty_proj(contradiction)
-#         gate = self.conflict_gate(doubt)
-#         hesitant_output = x * (1 - gate) + doubt * gate
-#         return hesitant_output
