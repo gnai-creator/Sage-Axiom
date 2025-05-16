@@ -147,8 +147,8 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.alpha_layer = tf.keras.layers.Dense(1, activation='sigmoid')
 
         self.doubt_pool = tf.keras.layers.GlobalAveragePooling2D()
-        self.doubt_dense1 = tf.keras.layers.Dense(dim, activation='relu', name='dense_8')
-        self.doubt_dense2 = tf.keras.layers.Dense(1, activation='sigmoid', name='dense_9')
+        self.doubt_dense1 = tf.keras.layers.Dense(dim, activation='relu', name='dense_9')
+        self.doubt_dense2 = tf.keras.layers.Dense(1, activation='sigmoid', name='dense_10')
 
         self.per_sample_pain = None
         self.adjusted_pain = None
@@ -190,6 +190,36 @@ class TaskPainSystem(tf.keras.layers.Layer):
             self.add_loss(doubt_loss)
 
         return self.adjusted_pain, self.gate, self.exploration_gate, self.alpha
+
+    def compute_trait_loss(self, output_logits, expected):
+        probs = tf.nn.softmax(output_logits)
+        self.confidence = tf.reduce_mean(tf.reduce_max(probs, axis=-1))
+        self.entropy = -tf.reduce_mean(tf.reduce_sum(probs * tf.math.log(probs + 1e-8), axis=-1))
+        self.ambition = tf.nn.relu(self.exploration_gate - 0.5)
+        self.assertiveness = self.gate
+        self.tenacity = tf.nn.relu(self.adjusted_pain - 5.0) * (1.0 - self.exploration_gate)
+        self.faith = tf.reduce_mean(self.alpha) * self.confidence
+        self.curiosity = self.entropy
+        self.patience = tf.exp(-self.adjusted_pain)
+        self.resilience = tf.exp(-tf.abs(self.per_sample_pain - self.adjusted_pain))
+        self.creativity = tf.math.reduce_std(probs)
+        self.empathy = tf.reduce_mean(self.alpha) * tf.reduce_mean(self.gate)
+        self.flexibility = tf.reduce_mean(tf.abs(output_logits - expected))
+
+        bonus = (
+            -0.01 * self.ambition +
+            0.01 * self.assertiveness -
+            0.01 * self.tenacity -
+            0.01 * self.faith +
+            0.01 * self.curiosity +
+            0.01 * self.patience +
+            0.01 * self.resilience +
+            0.01 * self.creativity +
+            0.01 * self.empathy -
+            0.01 * self.flexibility
+        )
+        entropy_loss = 0.01 * self.entropy
+        return bonus + entropy_loss
 
     def compute_trait_loss(self, output_logits, expected):
         probs = tf.nn.softmax(output_logits)
