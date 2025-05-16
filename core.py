@@ -56,7 +56,7 @@ class SageAxiom(tf.keras.Model):
 
         for t in range(T):
             early = self.early_proj(x_seq[:, t])
-            x = self.norm(self.encoder(early))
+            x = self.norm(self.encoder(early, training=training), training=training)
             x_flat = tf.keras.layers.GlobalAveragePooling2D()(x)
             x_flat = tf.keras.layers.Dense(self.hidden_dim, activation='relu')(x_flat)
             x_flat = tf.keras.layers.Dense(self.hidden_dim)(x_flat)
