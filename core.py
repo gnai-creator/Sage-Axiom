@@ -116,7 +116,7 @@ class SageAxiom(tf.keras.Model):
             alpha_out = self.pain_system.alpha_layer(self.pain_system.exploration_gate)
             alpha_loss = 0.01 * tf.reduce_mean(tf.square(alpha_out - 0.5))
             self.add_loss(alpha_loss)
-
+            
             base_loss = tf.reduce_mean(tf.square(expected_broadcast - final_logits))
             sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
