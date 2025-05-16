@@ -113,6 +113,8 @@ class SageAxiom(tf.keras.Model):
         if y_seq is not None:
             expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
             expected_broadcast = tf.reshape(expected_broadcast, tf.shape(final_logits))
+
+            dummy_blended = tf.zeros_like(paladin_output)
             pain, gate, exploration, alpha = self.pain_system(final_logits, expected_broadcast, blended=blended)
 
             base_loss = tf.reduce_mean(tf.square(expected_broadcast - final_logits))
