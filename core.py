@@ -4,7 +4,7 @@ import logging
 from layers import *
 
 class SageAxiom(tf.keras.Model):
-    def __init__(self, hidden_dim=64, use_hard_choice=True):
+    def __init__(self, hidden_dim=64, use_hard_choice=False):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.use_hard_choice = use_hard_choice
