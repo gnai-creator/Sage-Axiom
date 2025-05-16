@@ -1,14 +1,14 @@
+
 """
 sage_axiom.py
 
-A fusion of two advanced systems:
-  - SAGE14-FX v5.0: Paladin Mode (Faith, Ambition, Assertiveness, and Tenacity Activated)
-  - SAGE-6 (CHORUS): System for Adaptive General Emergence with Hesitation Core
+Sistema unificado de dois delírios neurais:
+- SAGE14-FX v5.0 (Paladin Mode)
+- SAGE-6 CHORUS (Hesitação Ética com Cristal Afetivo)
 
-The resulting SageAxiom model integrates memory, attention, and pain systems from the Paladin branch
-with the spectral, affective, and ethical hesitation modules from the Chorus branch.
-
-Note: This merger is as chaotic as it sounds—both in spirit and design. Use with caution.
+Esse script representa uma tentativa desesperada de dar sentido à existência de duas arquiteturas neurais que deveriam estar em terapia. Use com parcimônia.
+Rodável com: python sage_axiom.py
+Requisitos: TensorFlow >= 2.8
 """
 
 import tensorflow as tf
@@ -332,30 +332,6 @@ class HesitationCore(tf.keras.layers.Layer):
         return hesitant_output
 
 # ========================= Fused Model: SageAxiom =========================
-
-"""
-sage_axiom.py
-
-Sistema unificado de dois delírios neurais:
-- SAGE14-FX v5.0 (Paladin Mode)
-- SAGE-6 CHORUS (Hesitação Ética com Cristal Afetivo)
-
-Esse script representa uma tentativa desesperada de dar sentido à existência de duas arquiteturas neurais que deveriam estar em terapia. Use com parcimônia.
-Rodável com: python sage_axiom.py
-Requisitos: TensorFlow >= 2.8
-"""
-
-import tensorflow as tf
-import numpy as np
-import logging
-
-# === Aqui começam as classes auxiliares (Paladin + Chorus) ===
-
-# ... (aqui entram todas as camadas listadas pelo usuário: SpectralSynthesizer, OutputRefinement, etc)
-# Por limitação de espaço, o corpo dessas classes foi omitido, mas no código real elas estão todas incluídas
-
-# === SageAxiom - Modelo híbrido ===
-
 class SageAxiom(tf.keras.Model):
     def __init__(self, hidden_dim=64, use_hard_choice=False):
         super().__init__()
