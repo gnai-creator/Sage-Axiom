@@ -80,6 +80,44 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         pos = self.dense(pos)
         return tf.concat([x, pos], axis=-1)
 
+class BoundingBoxDiscipline(tf.keras.layers.Layer):
+    def __init__(self, threshold=0.5, penalty_weight=0.01):
+        super().__init__()
+        self.threshold = threshold
+        self.penalty_weight = penalty_weight
+
+    def call(self, prediction_probs, expected_onehot):
+        # Shape: [batch, H, W, C]
+        pred_mask = tf.reduce_max(prediction_probs, axis=-1) > self.threshold
+        true_mask = tf.reduce_max(expected_onehot, axis=-1) > 0.5
+
+        def bbox(mask):
+            coords = tf.where(mask)
+            y_min = tf.reduce_min(coords[:, 1])
+            x_min = tf.reduce_min(coords[:, 2])
+            y_max = tf.reduce_max(coords[:, 1])
+            x_max = tf.reduce_max(coords[:, 2])
+            return y_min, x_min, y_max, x_max
+
+        penalties = []
+        for b in range(tf.shape(pred_mask)[0]):
+            try:
+                p_y1, p_x1, p_y2, p_x2 = bbox(pred_mask[b])
+                t_y1, t_x1, t_y2, t_x2 = bbox(true_mask[b])
+
+                pred_area = tf.cast((p_y2 - p_y1 + 1) * (p_x2 - p_x1 + 1), tf.float32)
+                true_area = tf.cast((t_y2 - t_y1 + 1) * (t_x2 - t_x1 + 1), tf.float32)
+
+                area_penalty = tf.nn.relu(pred_area - true_area) / (true_area + 1.0)
+                center_offset = tf.sqrt(tf.square((p_y1 + p_y2) / 2 - (t_y1 + t_y2) / 2) +
+                                        tf.square((p_x1 + p_x2) / 2 - (t_x1 + t_x2) / 2)) / 20.0
+
+                penalties.append(area_penalty + center_offset)
+            except:
+                penalties.append(1.0)  # If something went wrong, punish hard
+
+        return self.penalty_weight * tf.reduce_mean(penalties)
+
 class FractalEncoder(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
