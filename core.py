@@ -49,7 +49,6 @@ class SageAxiom(tf.keras.Model):
         self.final_dense = tf.keras.layers.Dense(self.hidden_dim, name="dense_5169")
         self.final_conv = tf.keras.layers.Conv2D(10, 1, padding='same', name="final_logits_conv")
 
-
     def call(self, x_seq, y_seq=None, training=False):
         batch = tf.shape(x_seq)[0]
         T = tf.shape(x_seq)[1]
@@ -114,26 +113,26 @@ class SageAxiom(tf.keras.Model):
         if y_seq is not None:
             expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
             expected_broadcast = tf.reshape(expected_broadcast, tf.shape(final_logits))
-            
+
             pain, gate, exploration, alpha = self.pain_system(final_logits, expected_broadcast, blended=blended)
-        
+
             base_loss = tf.reduce_mean(tf.square(expected_broadcast - final_logits))
             sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
-        
+
             chorus_loss = 0.001 * tf.reduce_mean(tf.square(chorus_output))
             self.add_loss(chorus_loss)
-        
+
             # ⛓️ Forçar uso explícito dos pesos dessas camadas
             chorus_vars = self.chorus_encoder.trainable_variables + self.final_dense.trainable_variables
             chorus_weight_penalty = 0.001 * tf.add_n([tf.reduce_sum(tf.square(v)) for v in chorus_vars])
             self.add_loss(chorus_weight_penalty)
             crystallizer_loss = 0.001 * tf.reduce_sum(tf.square(self.crystallizer.state))
             self.add_loss(crystallizer_loss)
-        
+
             total_loss = base_loss + sym_loss + trait_loss + tf.add_n(self.losses)
             self.loss_tracker.update_state(total_loss)
-        
+
         return final_logits
 
     @property
