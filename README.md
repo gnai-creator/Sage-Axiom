@@ -1,89 +1,122 @@
-# 🧐 SageAxiom
+# Axiom: ARC Generalization Engine 🧠🔩
 
-**Fractal Neural Architecture for ARC-2025 Challenges**
-*Because pixel-perfect pain builds real generalization.*
-
----
-
-## ✨ Visão Geral
-
-**SageAxiom** é um modelo de aprendizagem profundo projetado para lidar com tarefas da competição **ARC Prize 2025**. Ele tenta capturar padrões visuais complexos com um sistema de memória episódica, codificação posicional 2D, refinamento de saída e um sistema punitivo de dor e disciplina... porque aparentemente *"só supervisionado"* não estava funcionando.
+> *A model architecture designed for solving the Abstraction and Reasoning Corpus (ARC) tasks, with a few-shot inner-loop adaptation approach and zero respect for your patience.*
 
 ---
 
-## 🧠 Arquitetura
+## 🧬 Overview
 
-* `early_proj`: Projeção convolucional de entrada
-* `EnhancedEncoder`: Encoder fractal com blocos residuais e normalização
-* `EpisodicMemory`: Acúmulo sequencial de embeddings
-* `LongTermMemory`: Banco de vetores fixos que podem ser consultados por similaridade
-* `MultiHeadAttentionWrapper`: Atenção própria sobre o contexto
-* `ChoiceHypothesisModule`: Geração e seleção ponderada de transformações
-* `TaskPainSystem`: Penalidade contextual baseada em softmax, entropia, e emoções simuladas
-* `OutputRefinement`: Refinamento final com fallback conservador
-* `BoundingBoxDiscipline`: Penalidade baseada em área para coibir entusiasmo fora de controle
+**Axiom** is a multi-stage encoder-decoder model crafted to tackle ARC-2025 challenge problems with few-shot learning. It leans heavily on episodic memory, speculative transformation selection, and something that vaguely resembles emotional regulation, if you're into anthropomorphizing.
 
 ---
 
-## ⚙️ Treinamento
+## 🧱 Architecture Highlights
 
-O modelo é treinado com:
+* **Input Encoding:**
 
-* **Loss principal**: diferença quadrática pixel a pixel (`MSE`)
-* **Auxiliares**: entropia, bounding box penalty, regulação de `gate` e `alpha`
-* **Otimizador**: Adam com `learning_rate=3e-4`
-* **Épocas recomendadas**: entre 100–300
+  * One-hot encoding of 20×20 grids with 10 color channels.
+  * Optional geometric augmentation (rotation, flipping, deep existential dread).
+
+* **Early Projection:**
+
+  * `Conv2D(1×1)` layer to project inputs into `hidden_dim` space.
+
+* **Encoder:**
+
+  * Combination of fractal blocks and residual layers for spatial pattern encoding.
+  * Deep, unnecessarily opinionated.
+
+* **Memory Modules:**
+
+  * `EpisodicMemory` stores temporal embeddings.
+  * `LongTermMemory` serves as a global, frozen attention slab.
+
+* **Attention:**
+
+  * Multi-head attention applied in multiple phases.
+  * Contextual alignment with past states and long-term bias.
+
+* **ChoiceHypothesisModule:**
+
+  * Projects multiple `hypotheses` over transformed features.
+  * A soft or hard selector weights which transformation to apply.
+  * Penalizes indecision with entropy loss. Because commitment matters.
+
+* **Blending:**
+
+  * Learns to combine last-step encoder output with transformed memory context.
+  * Gating is modulated by a `TaskPainSystem` because every decision hurts.
+
+* **Refinement:**
+
+  * Outputs pass through two refinement paths: confident (`refiner`) and fallback (`conservative`).
+  * A learnable scalar mixes the outputs.
+
+* **Losses:**
+
+  * Standard pixel-wise diff loss.
+  * Bounding box regularization (`BoundingBoxDiscipline`).
+  * Symmetry penalty.
+  * Trait-based auxiliary loss from the `TaskPainSystem`.
+
+---
+
+## 🔧 Training
+
+The model can be trained task-by-task with a simple few-shot regime:
 
 ```python
-optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4)
-loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-```
-
----
-
-## 🧪 Modo de Inferência
-
-```python
-x_seq, y_seq, test_x, test_input, expected_output = prepare_few_shot_from_task(
-    task, shot=5, augment=True
-)
-
-for epoch in range(300):
+for epoch in range(epochs):
     with tf.GradientTape() as tape:
         logits = model(x_seq, y_seq, training=True)
-        loss = loss_fn(y_seq[:, -1], logits) + tf.add_n(model.losses)
+        loss_main = loss_fn(y_seq[:, -1], logits)
+        loss = loss_main + tf.add_n(model.losses)
     grads = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
-
-pred = model(test_x, training=False)
 ```
 
----
-
-## 📦 Requisitos
-
-* TensorFlow 2.11+
-* NumPy
-* Matplotlib / Seaborn (para visualização)
-* Muita tolerância à dor
+Performance improves with longer training, aggressive augmentation, and general willingness to wait.
 
 ---
 
-## 📊 Métricas
+## 📈 Metrics
 
-* `Pixel Accuracy`: acurácia pixel a pixel
-* `Perfect Match`: saídas idênticas à ground truth
-* Logs internos: `pain`, `exploration`, `alpha`, `gate`, etc.
+* `Pixel Accuracy`: Fraction of pixels correctly predicted.
+* `Perfect Match Accuracy`: Entire grid match across all pixels.
 
----
-
-## 🔥 Filosofia
-
-> “Se uma rede convolucional sofre dor o suficiente, ela aprende. Ou pelo menos para de fazer besteira com a softmax.”
-> — Felipe Maya Muniz
+Also logs `Pain`, `Gate`, `Exploration`, and other emotionally unstable diagnostics.
 
 ---
 
-## 🚼 Licença
+## 🗂 Files
 
-CC BY-ND 4.0
+* `core.py`: Contains the main Axiom model class.
+* `layers.py`: All auxiliary modules, attention, pain system, memory, etc.
+* `train_axiom.py`: Orchestrates task loading, training loop, visualization.
+
+---
+
+## 💡 Usage Tips
+
+* Train with `shot=3 to 5`, `augment=True` for good generalization.
+* Suggested: 100–300 epochs per task (or until GPU smokes).
+* Keep logs of `Gate`, `Adjusted Pain`, and `BBox Loss` to debug generalization failures.
+
+---
+
+## 📜 License
+
+**CC BY-ND 4.0** – You’re free to use, share, and admire this work as long as:
+
+* You credit the author(s).
+* You don’t remix, transform, or build upon it.
+
+Violators will be visited by the `TaskPainSystem`, and it’s not pretty.
+
+---
+
+## 🐍 Disclaimer
+
+This project assumes a TensorFlow 2.x environment with no internet access, no external pretraining, and an unreasonable tolerance for pain.
+
+> *“Axiom doesn’t solve ARC. It endures it.”*
