@@ -174,7 +174,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.per_sample_pain = tf.reduce_mean(self.sensitivity * diff, axis=[1, 2, 3], keepdims=True)
         exploration = tf.sigmoid((self.per_sample_pain - 8.0) * 0.1)
         self.exploration_gate = tf.clip_by_value(exploration, 0.0, 0.98)
-        self.adjusted_pain = self.per_sample_pain / (1.0 + self.exploration_gate)
+        self.adjusted_pain = self.per_sample_pain / (1.0 + 0.5 * self.exploration_gate)
         self.gate = tf.sigmoid((self.adjusted_pain - self.threshold) * 2.5)
         self.alpha = self.alpha_layer(self.exploration_gate)
 
