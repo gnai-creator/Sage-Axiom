@@ -305,10 +305,10 @@ class AffectiveTimeCrystal(tf.keras.layers.Layer):
             x = tf.expand_dims(x, axis=0)
         elif len(x.shape) > 2:
             x = tf.reshape(x, [x.shape[0], -1])
+        x = tf.stop_gradient(x)
         emotion = self.projector(x)
         self.cycle.assign(0.8 * self.cycle + 0.2 * emotion)
         return self.cycle
-
 
 class SymbolicContradictionHarvester(tf.keras.layers.Layer):
     def __init__(self, dim):
@@ -321,6 +321,7 @@ class SymbolicContradictionHarvester(tf.keras.layers.Layer):
             x = tf.expand_dims(x, axis=0)
         elif len(x.shape) > 2:
             x = tf.reshape(x, [x.shape[0], -1])
+        x = tf.stop_gradient(x)
         q = self.query(x)
         self.memory.assign(0.95 * self.memory + 0.05 * q)
         return q - self.memory
