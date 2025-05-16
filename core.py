@@ -78,7 +78,9 @@ class SageAxiom(tf.keras.Model):
         attended = self.attn(projected_input)
         chosen_transform = self.chooser(attended, hard=self.use_hard_choice)
 
-        last_input_encoded = self.encoder(self.pos_enc(self.early_proj(x_seq[:, -1])))
+        last_early = self.early_proj(self.pos_enc(x_seq[:, -1]))
+        last_input_encoded = self.encoder(last_early, training=training)
+
         context_features = tf.concat([state, memory_context], axis=-1)
         channel_gate = self.gate_scale(context_features)
         channel_gate = tf.reshape(channel_gate, [batch, 1, 1, self.hidden_dim])
