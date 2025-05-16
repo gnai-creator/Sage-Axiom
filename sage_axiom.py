@@ -467,6 +467,20 @@ class SageAxiom(tf.keras.Model):
         hesitant = self.hesitator(reflective, contradiction)
         chorus_output = self.chorus_decoder(hesitant)
 
+        # === Loss auxiliar sobre módulos simbólicos ===
+        loss_affect = 0.001 * tf.reduce_mean(affect)
+        loss_contradiction = 0.001 * tf.reduce_mean(tf.abs(contradiction))
+        loss_reflective = 0.001 * tf.reduce_mean(tf.abs(reflective))
+        loss_doubt = 0.001 * tf.reduce_mean(doubt_score)
+        loss_hesitant = 0.001 * tf.reduce_mean(tf.abs(hesitant))
+        
+        self.add_loss(loss_affect)
+        self.add_loss(loss_contradiction)
+        self.add_loss(loss_reflective)
+        self.add_loss(loss_doubt)
+        self.add_loss(loss_hesitant)
+
+
         chorus_broadcast = tf.reshape(chorus_output, [batch, 1, 1, 10])
         chorus_broadcast = tf.tile(chorus_broadcast, [1, 20, 20, 1])
 
