@@ -24,7 +24,7 @@ class DoubtModule(tf.keras.layers.Layer):
     def call(self, x):
         pooled = self.global_pool(x)
         h = self.d1(pooled)
-        return self.d2(h)
+        return self.d2(h), h
 
 def compute_auxiliary_loss(output):
     flipped = tf.image.flip_left_right(output)
