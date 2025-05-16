@@ -18,13 +18,16 @@ class DoubtModule(tf.keras.layers.Layer):
     def __init__(self, hidden_dim):
         super().__init__()
         self.global_pool = tf.keras.layers.GlobalAveragePooling2D()
-        self.dense1 = tf.keras.layers.Dense(hidden_dim, activation='relu', name="dense_8")
-        self.dense2 = tf.keras.layers.Dense(1, activation='sigmoid', name="dense_9")
+        self.dense1 = tf.keras.layers.Dense(hidden_dim, activation='relu', name='dense_8')
+        self.dense2 = tf.keras.layers.Dense(1, activation='sigmoid', name='dense_9')
 
     def call(self, x):
         pooled = self.global_pool(x)
         h = self.dense1(pooled)
         out = self.dense2(h)
+        # Dummy operation to ensure loss path exists
+        dummy_loss = 0.0 * tf.reduce_sum(out)  # Ensures gradient path
+        self.add_loss(dummy_loss)
         return out, h
 
 def compute_auxiliary_loss(output):
