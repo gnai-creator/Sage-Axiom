@@ -100,6 +100,8 @@ Also logs `Pain`, `Gate`, `Exploration`, `Threshold`, and other emotionally unst
 * `core.py`: Contains the main Axiom model class.
 * `layers.py`: All auxiliary modules, attention, pain system, memory, etc.
 * `train_axiom.py`: Orchestrates task loading, training loop, visualization.
+* `LICENSE.txt`: License.
+* `README.md`: This.
 
 ---
 
