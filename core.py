@@ -97,12 +97,8 @@ class SageAxiom(tf.keras.Model):
         x_encoded = self.chorus_encoder(chorus_input)
         spectral = self.synthesizer(x_encoded)
         identity = self.crystallizer(spectral)
-        # affect = self.crystal(identity)
-        # crystal_loss = 0.001 * tf.reduce_mean(tf.square(affect))
-        # self.add_loss(crystal_loss)
         contradiction = self.harvester(identity)
         reflective = self.observer(contradiction)
-        # hesitant = self.hesitator(reflective, contradiction)
         chorus_output = self.chorus_decoder(reflective)
 
         # Merge Paladin + Chorus
@@ -114,7 +110,7 @@ class SageAxiom(tf.keras.Model):
         if y_seq is not None:
             expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
             expected_broadcast = tf.reshape(expected_broadcast, tf.shape(final_logits))
-            pain, gate, exploration, alpha = self.pain_system(final_logits, expected_broadcast)
+            pain, gate, exploration, alpha = self.pain_system(final_logits, expected_broadcast, blended=blended)
             base_loss = tf.reduce_mean(tf.square(expected_broadcast - final_logits))
             sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
