@@ -115,11 +115,12 @@ class FractalBlock(tf.keras.layers.Layer):
         self.bn = tf.keras.layers.BatchNormalization()
         self.skip = tf.keras.layers.Conv2D(dim, kernel_size=1, padding='same')
 
-    def call(self, x):
+    def call(self, x, training=False):
         out = self.conv(x)
-        out = self.bn(out)
+        out = self.bn(out, training=training)
         skip = self.skip(x)
         return tf.nn.relu(out + skip)
+
 
 class MultiHeadAttentionWrapper(tf.keras.layers.Layer):
     def __init__(self, dim, heads=8):
