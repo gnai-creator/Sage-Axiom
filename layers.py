@@ -81,7 +81,7 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         return tf.concat([x, pos], axis=-1)
 
 class BoundingBoxDiscipline(tf.keras.layers.Layer):
-    def __init__(self, threshold=0.3, penalty_weight=0.01):
+    def __init__(self, threshold=0.3, penalty_weight=0.05):
         super().__init__()
         self.threshold = threshold
         self.penalty_weight = penalty_weight
