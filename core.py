@@ -91,7 +91,9 @@ class SageAxiom(tf.keras.Model):
 
         output_logits = self.decoder(blended)
         refined_logits = self.refiner(output_logits)
-        doubt_score = self.doubt(blended)
+        doubt_score, doubt_repr = self.doubt(blended)
+        doubt_loss = 0.01 * tf.reduce_mean(tf.square(doubt_repr))  # ou alguma penalização mais útil
+        self.add_loss(doubt_loss)
         conservative_logits = self.fallback(blended)
         paladin_output = 0.5 * refined_logits + 0.5 * conservative_logits
 
