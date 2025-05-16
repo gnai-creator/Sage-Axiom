@@ -123,13 +123,16 @@ class SageAxiom(tf.keras.Model):
             sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
         
-            # Novo loss: forçar a branch Chorus a contribuir
             chorus_loss = 0.001 * tf.reduce_mean(tf.square(chorus_output))
             self.add_loss(chorus_loss)
-
+        
+            # ⛓️ Forçar uso explícito dos pesos dessas camadas
+            chorus_vars = self.chorus_encoder.trainable_variables + self.final_dense.trainable_variables
+            chorus_weight_penalty = 0.001 * tf.add_n([tf.reduce_sum(tf.square(v)) for v in chorus_vars])
+            self.add_loss(chorus_weight_penalty)
+        
             total_loss = base_loss + sym_loss + trait_loss + tf.add_n(self.losses)
             self.loss_tracker.update_state(total_loss)
-
         
         return final_logits
 
