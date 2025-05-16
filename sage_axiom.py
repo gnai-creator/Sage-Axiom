@@ -271,7 +271,12 @@ class EnhancedEncoder(tf.keras.layers.Layer):
 class SpectralSynthesizer(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.weights = tf.Variable(tf.random.normal([dim]), trainable=False)
+        self.prime_weights = self.add_weight(
+            name="prime_weights",
+            shape=[dim],
+            initializer=tf.keras.initializers.RandomNormal(),
+            trainable=False
+        )
 
     def call(self, x):
         primes = tf.constant([2, 3, 5, 7, 11, 13, 17, 19], dtype=tf.float32)
