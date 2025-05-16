@@ -261,27 +261,15 @@ class EnhancedEncoder(tf.keras.layers.Layer):
         return x
 
 
-
-class SpectralSynthesizer(tf.keras.layers.Layer):
-    def __init__(self, dim):
-        super().__init__()
-        self.prime_weights = self.add_weight(
-            name="prime_weights",
-            shape=[dim],
-            initializer=tf.keras.initializers.RandomNormal(),
-            trainable=False
-        )
-
-    def call(self, x):
-        primes = tf.constant([2, 3, 5, 7, 11, 13, 17, 19], dtype=tf.float32)
-        shifts = [tf.roll(x, shift=int(p), axis=0) for p in primes]
-        modulation = tf.add_n([s * tf.math.log(p) for s, p in zip(shifts, primes)])
-        return x + modulation
-
 class IdentityCrystallizer(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.state = tf.Variable(tf.zeros([dim]), trainable=False)
+        self.state = self.add_weight(
+            name='crystallized_identity',
+            shape=[dim],
+            initializer='zeros',
+            trainable=True
+        )
 
     def call(self, x):
         update = tf.reduce_mean(x, axis=0)
