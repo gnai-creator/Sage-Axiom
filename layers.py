@@ -115,11 +115,12 @@ class FractalBlock(tf.keras.layers.Layer):
         self.bn = tf.keras.layers.BatchNormalization()
         self.skip = tf.keras.layers.Conv2D(dim, kernel_size=1, padding='same')
 
-    def call(self, x, training=False):
+    def call(self, x, training=False):  # <-- Adiciona training
         out = self.conv(x)
-        out = self.bn(out, training=training)
+        out = self.bn(out, training=training)  # <-- Usa o training
         skip = self.skip(x)
         return tf.nn.relu(out + skip)
+
 
 
 class MultiHeadAttentionWrapper(tf.keras.layers.Layer):
@@ -241,18 +242,22 @@ class AttentionOverMemory(tf.keras.layers.Layer):
 class EnhancedEncoder(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.f1 = FractalEncoder(dim)
-        self.b1 = FractalBlock(dim)
-        self.b2 = FractalBlock(dim)
-        self.b3 = FractalBlock(dim)
-        self.final_conv = tf.keras.layers.Conv2D(dim, 3, padding='same', activation='relu')
+        self.blocks = [
+            FractalEncoder(dim),
+            FractalBlock(dim),
+            FractalBlock(dim),
+            FractalBlock(dim),
+            tf.keras.layers.Conv2D(dim, 3, padding='same', activation='relu')
+        ]
 
-    def call(self, x, training=False):
-        x = self.f1(x)
-        x = self.b1(x, training=training)
-        x = self.b2(x, training=training)
-        x = self.b3(x, training=training)
-        return self.final_conv(x)
+    def call(self, x, training=False):  # <-- Adiciona training
+        x = self.blocks[0](x)
+        x = self.blocks[1](x, training=training)
+        x = self.blocks[2](x, training=training)
+        x = self.blocks[3](x, training=training)
+        x = self.blocks[4](x)
+        return x
+
 
 
 class SpectralSynthesizer(tf.keras.layers.Layer):
