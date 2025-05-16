@@ -97,7 +97,7 @@ class SageAxiom(tf.keras.Model):
 
         if y_seq is not None:
             expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
-            expected_broadcast = tf.reshape(expected_broadcast, tf.shape(final_logits))
+            # expected_broadcast = tf.reshape(expected_broadcast, tf.shape(final_logits))
 
             # Regional pain + enthusiasm penalty
             pixelwise_diff = tf.square(expected_broadcast - final_logits)
