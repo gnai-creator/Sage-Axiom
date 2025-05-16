@@ -35,19 +35,20 @@ class SageAxiom(tf.keras.Model):
         self.gate_scale = tf.keras.layers.Dense(hidden_dim, activation='sigmoid', name="gate_scale")
         self.fallback = tf.keras.layers.Conv2D(10, 1)
 
-        # === Chorus Core ===
-        self.chorus_encoder = tf.keras.layers.Dense(hidden_dim, activation='relu', name="dense_5180")
-        self.crystallizer = IdentityCrystallizer(hidden_dim)
-        self.harvester = SymbolicContradictionHarvester(hidden_dim)
-        self.observer = ReflexiveObserver(hidden_dim)
-        self.chorus_decoder = tf.keras.layers.Dense(10, name="chorus_decoder")
-
         self.loss_tracker = tf.keras.metrics.Mean(name="loss")
 
+        self.refine_weight = self.add_weight(
+            name="refine_weight",
+            shape=(),
+            initializer=tf.keras.initializers.Constant(0.5),
+            trainable=True
+        )
+
+        
         self.flat_dense1 = tf.keras.layers.Dense(self.hidden_dim, activation='relu', name="dense_5158")
         self.flat_dense2 = tf.keras.layers.Dense(self.hidden_dim, name="dense_7")
-        self.final_dense = tf.keras.layers.Dense(self.hidden_dim, name="dense_5169")
         self.final_conv = tf.keras.layers.Conv2D(10, 1, padding='same', name="final_logits_conv")
+        
 
     def call(self, x_seq, y_seq=None, training=False):
         batch = tf.shape(x_seq)[0]
@@ -82,8 +83,8 @@ class SageAxiom(tf.keras.Model):
         channel_gate = tf.clip_by_value(channel_gate, 0.0, 1.0)
 
         gate_softmax = tf.nn.softmax(tf.concat([channel_gate, 1 - channel_gate], axis=-1), axis=-1)
-        chosen_weight = gate_softmax[..., :self.hidden_dim]
-        last_weight = gate_softmax[..., self.hidden_dim:]
+        chosen_weight = channel_gate
+        last_weight = 1.0 - channel_gate
         blended = chosen_weight * chosen_transform + last_weight * last_input_encoded
 
         for _ in range(2):
@@ -93,21 +94,13 @@ class SageAxiom(tf.keras.Model):
         output_logits = self.decoder(blended)
         refined_logits = self.refiner(output_logits)
         conservative_logits = self.fallback(blended)
-        paladin_output = 0.5 * refined_logits + 0.5 * conservative_logits
+        w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
+        paladin_output = w * refined_logits + (1.0 - w) * conservative_logits
 
-        # Chorus branch (vector path)
-        last_frame = x_seq[:, -1]
-        chorus_input = self.final_dense(tf.reduce_mean(last_frame, axis=[1, 2]))
-        x_encoded = self.chorus_encoder(chorus_input)
-        identity = self.crystallizer(x_encoded)
-        contradiction = self.harvester(identity)
-        reflective = self.observer(contradiction)
-        chorus_output = self.chorus_decoder(reflective)
 
-        # Merge Paladin + Chorus
-        chorus_broadcast = tf.reshape(chorus_output, [batch, 1, 1, 10])
-        chorus_broadcast = tf.tile(chorus_broadcast, [1, 20, 20, 1])
-        fused = tf.concat([paladin_output, chorus_broadcast], axis=-1)
+
+
+        fused = paladin_output
         final_logits = self.final_conv(fused)
 
         if y_seq is not None:
@@ -119,16 +112,6 @@ class SageAxiom(tf.keras.Model):
             base_loss = tf.reduce_mean(tf.square(expected_broadcast - final_logits))
             sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
-
-            chorus_loss = 0.001 * tf.reduce_mean(tf.square(chorus_output))
-            self.add_loss(chorus_loss)
-
-            # ⛓️ Forçar uso explícito dos pesos dessas camadas
-            chorus_vars = self.chorus_encoder.trainable_variables + self.final_dense.trainable_variables
-            chorus_weight_penalty = 0.001 * tf.add_n([tf.reduce_sum(tf.square(v)) for v in chorus_vars])
-            self.add_loss(chorus_weight_penalty)
-            crystallizer_loss = 0.001 * tf.reduce_sum(tf.square(self.crystallizer.state))
-            self.add_loss(crystallizer_loss)
 
             total_loss = base_loss + sym_loss + trait_loss + tf.add_n(self.losses)
             self.loss_tracker.update_state(total_loss)
