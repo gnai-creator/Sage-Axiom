@@ -41,13 +41,13 @@ class SageAxiom(tf.keras.Model):
         self.refine_weight = self.add_weight(
             name="refine_weight",
             shape=(),
-            initializer=tf.keras.initializers.Constant(0.65),
+            initializer=tf.keras.initializers.Constant(0.9),
             trainable=True
         )
 
         self.flat_dense1 = tf.keras.layers.Dense(self.hidden_dim, activation='relu', name="dense_5158")
         self.flat_dense2 = tf.keras.layers.Dense(self.hidden_dim, name="dense_7")
-        self.final_conv = tf.keras.layers.Conv2D(10, 1, padding='same', name="final_logits_conv")
+        # self.final_conv = tf.keras.layers.Conv2D(10, 1, padding='same', name="final_logits_conv")
 
     def call(self, x_seq, y_seq=None, training=False):
         batch = tf.shape(x_seq)[0]
@@ -97,7 +97,9 @@ class SageAxiom(tf.keras.Model):
         conservative_logits = self.fallback(blended)
         w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
         paladin_output = w * refined_logits + (1.0 - w) * conservative_logits
-        final_logits = self.final_conv(paladin_output)
+        # final_logits = self.final_conv(paladin_output)
+        final_logits = paladin_output
+        print(tf.argmax(final_logits[0], axis=-1))
 
         if y_seq is not None:
             expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
