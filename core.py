@@ -56,9 +56,10 @@ class SageAxiom(tf.keras.Model):
         self.memory.reset()
 
         for t in range(T):
-            early = self.early_proj(x_seq[:, t])
+            early = self.pos_enc(x_seq[:, t])
+            early = self.early_proj(early)  # agora está com shape [B, 20, 20, 128]
             x = self.encoder(early, training=training)
-            x = self.pos_enc(x)  # <- aqui é o ponto
+
             x = self.norm(x, training=training)
             x_flat = tf.keras.layers.GlobalAveragePooling2D()(x)
             x_flat = self.flat_dense1(x_flat)
