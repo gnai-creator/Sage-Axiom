@@ -18,13 +18,14 @@ class DoubtModule(tf.keras.layers.Layer):
     def __init__(self, hidden_dim):
         super().__init__()
         self.global_pool = tf.keras.layers.GlobalAveragePooling2D()
-        self.d1 = tf.keras.layers.Dense(hidden_dim, activation='relu')
-        self.d2 = tf.keras.layers.Dense(1, activation='sigmoid')
+        self.dense1 = tf.keras.layers.Dense(hidden_dim, activation='relu', name="dense_8")
+        self.dense2 = tf.keras.layers.Dense(1, activation='sigmoid', name="dense_9")
 
     def call(self, x):
         pooled = self.global_pool(x)
-        h = self.d1(pooled)
-        return self.d2(h), h
+        h = self.dense1(pooled)
+        out = self.dense2(h)
+        return out, h
 
 def compute_auxiliary_loss(output):
     flipped = tf.image.flip_left_right(output)
