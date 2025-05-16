@@ -289,7 +289,13 @@ class IdentityCrystallizer(tf.keras.layers.Layer):
 class AffectiveTimeCrystal(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.cycle = tf.Variable(tf.zeros([1, dim]), trainable=True)
+        self.cycle = self.add_weight(
+            name='cycle_state',
+            shape=(1, dim),
+            initializer='zeros',
+            trainable=True
+        )
+
         self.projector = tf.keras.layers.Dense(dim, activation='tanh')
 
     def call(self, x):
