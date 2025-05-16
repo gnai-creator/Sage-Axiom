@@ -301,6 +301,8 @@ class AffectiveTimeCrystal(tf.keras.layers.Layer):
         self.projector = tf.keras.layers.Dense(dim, activation='tanh')
 
     def call(self, x):
+        if len(x.shape) == 1:
+            x = tf.expand_dims(x, axis=0)
         emotion = self.projector(x)
         self.cycle.assign(0.8 * self.cycle + 0.2 * emotion)
         return self.cycle
