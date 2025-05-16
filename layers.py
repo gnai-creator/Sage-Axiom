@@ -169,6 +169,11 @@ class ChoiceHypothesisModule(tf.keras.layers.Layer):
         candidates = [h(x) for h in self.hypotheses]
         stacked = tf.stack(candidates, axis=1)
         weights = self.selector(tf.reduce_mean(x, axis=[1, 2]))
+
+        # 🎯 Adiciona regularização de entropia pra evitar colapso
+        entropy = -tf.reduce_sum(weights * tf.math.log(weights + 1e-8), axis=-1)
+        self.add_loss(0.01 * tf.reduce_mean(entropy))  # Bonus: incentiva incerteza inteligente
+
         if hard:
             idx = tf.argmax(weights, axis=-1)
             one_hot = tf.one_hot(idx, depth=4, dtype=tf.float32)[:, :, tf.newaxis, tf.newaxis, tf.newaxis]
@@ -176,6 +181,7 @@ class ChoiceHypothesisModule(tf.keras.layers.Layer):
         else:
             weights = tf.reshape(weights, [-1, 4, 1, 1, 1])
             return tf.reduce_sum(stacked * weights, axis=1)
+
 
 class TaskPainSystem(tf.keras.layers.Layer):
     def __init__(self, dim):
