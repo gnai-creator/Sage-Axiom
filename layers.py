@@ -182,12 +182,15 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.add_loss(alpha_loss)
         self.add_loss(gate_reg_loss)
 
-        if blended is not None:
-            pooled = self.doubt_pool(blended)
-            doubt_repr = self.doubt_dense1(pooled)
-            doubt_score = self.doubt_dense2(doubt_repr)
-            doubt_loss = 0.01 * tf.reduce_mean(tf.square(doubt_repr)) + 0.01 * tf.reduce_mean(doubt_score)
-            self.add_loss(doubt_loss)
+        if blended is None:
+            blended = tf.zeros([tf.shape(pred)[0], 20, 20, self.sensitivity.shape[-1]])
+        
+        pooled = self.doubt_pool(blended)
+        doubt_repr = self.doubt_dense1(pooled)
+        doubt_score = self.doubt_dense2(doubt_repr)
+        doubt_loss = 0.01 * tf.reduce_mean(tf.square(doubt_repr)) + 0.01 * tf.reduce_mean(doubt_score)
+        self.add_loss(doubt_loss)
+
 
         return self.adjusted_pain, self.gate, self.exploration_gate, self.alpha
 
