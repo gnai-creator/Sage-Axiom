@@ -286,27 +286,27 @@ class IdentityCrystallizer(tf.keras.layers.Layer):
         self.state.assign(0.9 * self.state + 0.1 * update)
         return self.state
 
-class AffectiveTimeCrystal(tf.keras.layers.Layer):
-    def __init__(self, dim):
-        super().__init__()
-        self.cycle = self.add_weight(
-            name='cycle_state',
-            shape=(1, dim),
-            initializer='zeros',
-            trainable=True
-        )
+# class AffectiveTimeCrystal(tf.keras.layers.Layer):
+#     def __init__(self, dim):
+#         super().__init__()
+#         self.cycle = self.add_weight(
+#             name='cycle_state',
+#             shape=(1, dim),
+#             initializer='zeros',
+#             trainable=True
+#         )
 
-        self.projector = tf.keras.layers.Dense(dim, activation='tanh')
+#         self.projector = tf.keras.layers.Dense(dim, activation='tanh')
 
-    def call(self, x):
-        if len(x.shape) == 1:
-            x = tf.expand_dims(x, axis=0)
-        elif len(x.shape) > 2:
-            x = tf.reshape(x, [x.shape[0], -1])
-        x = tf.stop_gradient(x)
-        emotion = self.projector(x)
-        self.cycle.assign(0.8 * self.cycle + 0.2 * emotion)
-        return self.cycle
+#     def call(self, x):
+#         if len(x.shape) == 1:
+#             x = tf.expand_dims(x, axis=0)
+#         elif len(x.shape) > 2:
+#             x = tf.reshape(x, [x.shape[0], -1])
+#         x = tf.stop_gradient(x)
+#         emotion = self.projector(x)
+#         self.cycle.assign(0.8 * self.cycle + 0.2 * emotion)
+#         return self.cycle
 
 class SymbolicContradictionHarvester(tf.keras.layers.Layer):
     def __init__(self, dim):
@@ -338,22 +338,22 @@ class ReflexiveObserver(tf.keras.layers.Layer):
         return x * self.meta(x)
 
 
-class HesitationCore(tf.keras.layers.Layer):
-    def __init__(self, dim):
-        super().__init__()
-        self.uncertainty_proj = tf.keras.layers.Dense(dim, activation='tanh')
-        self.conflict_gate = tf.keras.layers.Dense(1, activation='sigmoid')
+# class HesitationCore(tf.keras.layers.Layer):
+#     def __init__(self, dim):
+#         super().__init__()
+#         self.uncertainty_proj = tf.keras.layers.Dense(dim, activation='tanh')
+#         self.conflict_gate = tf.keras.layers.Dense(1, activation='sigmoid')
 
-    def call(self, x, contradiction):
-        if len(x.shape) == 1:
-            x = tf.expand_dims(x, axis=0)
-        elif len(x.shape) > 2:
-            x = tf.reshape(x, [x.shape[0], -1])
-        if len(contradiction.shape) == 1:
-            contradiction = tf.expand_dims(contradiction, axis=0)
-        elif len(contradiction.shape) > 2:
-            contradiction = tf.reshape(contradiction, [contradiction.shape[0], -1])
-        doubt = self.uncertainty_proj(contradiction)
-        gate = self.conflict_gate(doubt)
-        hesitant_output = x * (1 - gate) + doubt * gate
-        return hesitant_output
+#     def call(self, x, contradiction):
+#         if len(x.shape) == 1:
+#             x = tf.expand_dims(x, axis=0)
+#         elif len(x.shape) > 2:
+#             x = tf.reshape(x, [x.shape[0], -1])
+#         if len(contradiction.shape) == 1:
+#             contradiction = tf.expand_dims(contradiction, axis=0)
+#         elif len(contradiction.shape) > 2:
+#             contradiction = tf.reshape(contradiction, [contradiction.shape[0], -1])
+#         doubt = self.uncertainty_proj(contradiction)
+#         gate = self.conflict_gate(doubt)
+#         hesitant_output = x * (1 - gate) + doubt * gate
+#         return hesitant_output
