@@ -107,7 +107,7 @@ class SageAxiom(tf.keras.Model):
         fused = tf.concat([paladin_output, chorus_broadcast], axis=-1)
         final_logits = tf.keras.layers.Conv2D(10, 1, padding='same')(fused)
 
-       if y_seq is not None:
+        if y_seq is not None:
             expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
             expected_broadcast = tf.reshape(expected_broadcast, tf.shape(final_logits))
             pain, gate, exploration, alpha = self.pain_system(final_logits, expected_broadcast, blended=blended)
