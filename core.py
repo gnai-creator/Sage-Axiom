@@ -47,6 +47,9 @@ class SageAxiom(tf.keras.Model):
 
         self.flat_dense1 = tf.keras.layers.Dense(self.hidden_dim, activation='relu', name="dense_5158")
         self.flat_dense2 = tf.keras.layers.Dense(self.hidden_dim, name="dense_7")
+        self.final_dense = tf.keras.layers.Dense(self.hidden_dim, name="dense_5169")
+        self.final_conv = tf.keras.layers.Conv2D(10, 1, padding='same', name="final_logits_conv")
+
 
     def call(self, x_seq, y_seq=None, training=False):
         batch = tf.shape(x_seq)[0]
@@ -96,7 +99,7 @@ class SageAxiom(tf.keras.Model):
 
         # Chorus branch (vector path)
         last_frame = x_seq[:, -1]
-        chorus_input = tf.reduce_mean(last_frame, axis=[1, 2])
+        chorus_input = self.final_dense(tf.reduce_mean(last_frame, axis=[1, 2]))
         x_encoded = self.chorus_encoder(chorus_input)
         spectral = self.synthesizer(x_encoded)
         identity = self.crystallizer(spectral)
@@ -108,21 +111,20 @@ class SageAxiom(tf.keras.Model):
         chorus_broadcast = tf.reshape(chorus_output, [batch, 1, 1, 10])
         chorus_broadcast = tf.tile(chorus_broadcast, [1, 20, 20, 1])
         fused = tf.concat([paladin_output, chorus_broadcast], axis=-1)
-        final_logits = tf.keras.layers.Conv2D(10, 1, padding='same')(fused)
+        final_logits = self.final_conv(fused)
 
         if y_seq is not None:
             expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
             expected_broadcast = tf.reshape(expected_broadcast, tf.shape(final_logits))
-
-            dummy_blended = tf.zeros_like(paladin_output)
+        
             pain, gate, exploration, alpha = self.pain_system(final_logits, expected_broadcast, blended=blended)
-
+        
             base_loss = tf.reduce_mean(tf.square(expected_broadcast - final_logits))
             sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
             total_loss = base_loss + sym_loss + trait_loss + tf.add_n(self.losses)
             self.loss_tracker.update_state(total_loss)
-
+        
         return final_logits
 
     @property
