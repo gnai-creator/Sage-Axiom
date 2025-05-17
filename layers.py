@@ -97,14 +97,19 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
             is_empty = tf.equal(count, 0)
 
             def fallback():
-                tf.print(f"⚠️ Bounding box failed for:", label, "- using default values")
-                return 0, 0, 1, 1  # min box to avoid divide-by-zero later
+                tf.print(f"⚠️ Bounding box failed for:", label, "- using default bbox [0,0,1,1]")
+                return (
+                    tf.constant(0.0, dtype=tf.float32),
+                    tf.constant(0.0, dtype=tf.float32),
+                    tf.constant(1.0, dtype=tf.float32),
+                    tf.constant(1.0, dtype=tf.float32)
+                )
 
             def compute_bbox():
-                y_min = tf.reduce_min(coords[:, 0])
-                x_min = tf.reduce_min(coords[:, 1])
-                y_max = tf.reduce_max(coords[:, 0])
-                x_max = tf.reduce_max(coords[:, 1])
+                y_min = tf.cast(tf.reduce_min(coords[:, 0]), tf.float32)
+                x_min = tf.cast(tf.reduce_min(coords[:, 1]), tf.float32)
+                y_max = tf.cast(tf.reduce_max(coords[:, 0]), tf.float32)
+                x_max = tf.cast(tf.reduce_max(coords[:, 1]), tf.float32)
                 return y_min, x_min, y_max, x_max
 
             return tf.cond(is_empty, fallback, compute_bbox)
@@ -116,13 +121,13 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
             p_y1, p_x1, p_y2, p_x2 = safe_bbox(pred_mask[b], label="pred")
             t_y1, t_x1, t_y2, t_x2 = safe_bbox(true_mask[b], label="true")
 
-            pred_area = tf.cast((p_y2 - p_y1 + 1) * (p_x2 - p_x1 + 1), tf.float32)
-            true_area = tf.cast((t_y2 - t_y1 + 1) * (t_x2 - t_x1 + 1), tf.float32)
+            pred_area = (p_y2 - p_y1 + 1.0) * (p_x2 - p_x1 + 1.0)
+            true_area = (t_y2 - t_y1 + 1.0) * (t_x2 - t_x1 + 1.0)
 
             area_penalty = tf.nn.relu(pred_area - true_area) / (true_area + 1.0)
             center_offset = tf.sqrt(
-                tf.square((p_y1 + p_y2) / 2 - (t_y1 + t_y2) / 2) +
-                tf.square((p_x1 + p_x2) / 2 - (t_x1 + t_x2) / 2)
+                tf.square((p_y1 + p_y2) / 2.0 - (t_y1 + t_y2) / 2.0) +
+                tf.square((p_x1 + p_x2) / 2.0 - (t_x1 + t_x2) / 2.0)
             ) / 20.0
 
             penalties.append(area_penalty + center_offset)
