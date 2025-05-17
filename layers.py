@@ -209,17 +209,38 @@ class LearnedRotation(tf.keras.layers.Layer):
         out = tf.reduce_sum(stacked * weights, axis=1)
         return out
 
+class MeanderHypothesisLayer(tf.keras.layers.Layer):
+    def __init__(self, dim, shifts=[(1,0), (0,1), (1,1), (2,0), (0,2)]):
+        super().__init__()
+        self.dim = dim
+        self.shifts = shifts
+        self.conv = tf.keras.layers.Conv2D(dim, 1, activation='relu')
+        self.merge = tf.keras.layers.Conv2D(dim, 1)
+
+    def shift_tensor(self, x, dy, dx):
+        return tf.roll(x, shift=[dy, dx], axis=[1, 2])
+
+    def call(self, x):
+        base = self.conv(x)
+        shifted = [self.shift_tensor(base, dy, dx) for dy, dx in self.shifts]
+        shifted.append(base)  # Include the base (no shift)
+        stacked = tf.stack(shifted, axis=0)
+        return self.merge(tf.reduce_mean(stacked, axis=0))
+
+
 
 class ChoiceHypothesisModule(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
+        self.meander = MeanderHypothesisLayer(dim)
         self.input_proj = tf.keras.layers.Conv2D(dim, kernel_size=1, activation='relu')
         self.hypotheses = [tf.keras.layers.Conv2D(dim, kernel_size=1, activation='relu') for _ in range(4)]
         self.selector = tf.keras.layers.Dense(4, activation='softmax')
 
     def call(self, x, hard=False):
         x = self.input_proj(x)
-        candidates = [h(x) for h in self.hypotheses]
+        candidates = [h(x) for h in self.hypotheses] + [self.meander(x)]
+
         stacked = tf.stack(candidates, axis=1)
 
         pooled = tf.reduce_mean(x, axis=[1, 2])
