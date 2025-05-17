@@ -145,7 +145,7 @@ class SageAxiom(tf.keras.Model):
 
             pred_mask = tf.reduce_max(probs, axis=-1) > 0.5
             true_mask = tf.reduce_max(expected_broadcast, axis=-1) > 0.5
-            shape_loss = self.bounding_shape_penalty(pred_mask, true_mask) * 0.05
+            shape_loss = bounding_shape_penalty(pred_mask, true_mask) * 0.05
 
             #tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
 
