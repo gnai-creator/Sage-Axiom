@@ -262,8 +262,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
     def call(self, pred, expected, blended=None, training=False):
         self.threshold.assign(self.threshold_memory.get_adaptive_threshold())
     
-        diff = tf.square(pred - expected)
-        diff = tf.clip_by_value(diff, 0.0, 1.0)
+        diff = tf.clip_by_value(tf.square(pred - expected), 0.0, 1.0)
     
         raw_pain = tf.reduce_mean(tf.sqrt(self.sensitivity * diff + 1e-6), axis=[1, 2, 3], keepdims=True)
         raw_pain = tf.clip_by_value(raw_pain, 0.0, 10.0)
