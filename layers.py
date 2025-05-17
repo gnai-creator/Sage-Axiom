@@ -79,6 +79,10 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         self.dense = tf.keras.layers.Dense(channels, activation='tanh')
 
     def call(self, x):
+        # Handle case where x has shape (B, H, W, C1, C2)
+        while len(tf.shape(x)) > 4:
+            x = tf.reshape(x, [tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], -1])
+
         b, h, w = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2]
         y_pos = tf.linspace(-1.0, 1.0, tf.cast(h, tf.int32))
         x_pos = tf.linspace(-1.0, 1.0, tf.cast(w, tf.int32))
