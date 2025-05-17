@@ -232,12 +232,13 @@ class MeanderHypothesisLayer(tf.keras.layers.Layer):
 class ChoiceHypothesisModule(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.num_hypotheses = 5
+        self.base_hypotheses = 4
+        self.num_hypotheses = self.base_hypotheses + 1
         self.meander = MeanderHypothesisLayer(dim)
         self.input_proj = tf.keras.layers.Conv2D(dim, kernel_size=1, activation='relu')
         self.hypotheses = [
             tf.keras.layers.Conv2D(dim, kernel_size=1, activation='relu')
-            for _ in range(self.num_hypotheses)
+            for _ in range(self.base_hypotheses)
         ]
         self.selector = tf.keras.layers.Dense(self.num_hypotheses, activation='softmax')
 
@@ -256,7 +257,7 @@ class ChoiceHypothesisModule(tf.keras.layers.Layer):
 
         if hard:
             idx = tf.argmax(weights, axis=-1)
-            one_hot = tf.one_hot(idx, depth=4, dtype=tf.float32)[:, :, tf.newaxis, tf.newaxis, tf.newaxis]
+            one_hot = tf.one_hot(idx, depth=self.num_hypotheses, dtype=tf.float32)[:, :, tf.newaxis, tf.newaxis, tf.newaxis]
             return tf.reduce_sum(stacked * one_hot, axis=1)
         else:
             weights = tf.reshape(weights, [-1, self.num_hypotheses, 1, 1, 1])
