@@ -232,10 +232,14 @@ class MeanderHypothesisLayer(tf.keras.layers.Layer):
 class ChoiceHypothesisModule(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
+        self.num_hypotheses = 5
         self.meander = MeanderHypothesisLayer(dim)
         self.input_proj = tf.keras.layers.Conv2D(dim, kernel_size=1, activation='relu')
-        self.hypotheses = [tf.keras.layers.Conv2D(dim, kernel_size=1, activation='relu') for _ in range(4)]
-        self.selector = tf.keras.layers.Dense(5, activation='softmax')
+        self.hypotheses = [
+            tf.keras.layers.Conv2D(dim, kernel_size=1, activation='relu')
+            for _ in range(self.num_hypotheses)
+        ]
+        self.selector = tf.keras.layers.Dense(self.num_hypotheses, activation='softmax')
 
     def call(self, x, hard=False):
         x = self.input_proj(x)
