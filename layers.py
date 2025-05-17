@@ -319,7 +319,9 @@ class TaskPainSystem(tf.keras.layers.Layer):
         raw_pain = tf.clip_by_value(raw_pain, 0.0, 10.0)
     
         mood_mod = 1.0 + 0.01 * tf.sin(raw_pain * 3.14)
-        self.per_sample_pain = tf.clip_by_value(raw_pain * mood_mod, 0.0, 10.0)
+        #self.per_sample_pain = tf.clip_by_value(raw_pain * mood_mod, 0.0, 10.0)
+        self.per_sample_pain = tf.clip_by_value(raw_pain * (1.0 + 0.05 * tf.sin(raw_pain * 6.28)) * mood_mod, 0.0, 10.0)
+
     
         #exploration = tf.sigmoid((self.per_sample_pain - 0.3) * 3.0)
         exploration = tf.clip_by_value(tf.pow(self.per_sample_pain + 1e-3, 0.5), 0.05, 0.98)
