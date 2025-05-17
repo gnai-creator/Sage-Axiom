@@ -117,8 +117,8 @@ class SageAxiom(tf.keras.Model):
 
             probs = tf.nn.softmax(final_logits)
             bbox_loss = self.bbox_penalty(probs, expected_broadcast)
-            tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
-
+            # tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
+            tf.print("bbox_penalty:", bbox_loss)
             total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + tf.add_n(self.losses)
             self.loss_tracker.update_state(total_loss)
 
