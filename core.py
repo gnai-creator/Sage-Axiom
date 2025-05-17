@@ -51,16 +51,21 @@ class SageAxiom(tf.keras.Model):
         self.flat_dense1 = tf.keras.layers.Dense(self.hidden_dim, activation='relu', name="dense_5158")
         self.flat_dense2 = tf.keras.layers.Dense(self.hidden_dim, name="dense_7")
 
+    def temporal_symmetry_loss(self, logits_seq):
+        flipped = tf.reverse(logits_seq, axis=[1])  # Reverse over time axis
+        return tf.reduce_mean(tf.square(logits_seq - flipped))
+
     def call(self, x_seq, y_seq=None, training=False):
-        x_seq = tf.one_hot(x_seq, depth=10)  # B, T, H, W, 10
-        x_seq = tf.tensordot(x_seq, self.token_embedding.embeddings, axes=[[4], [0]])  # B, T, H, W, D
+        x_seq = tf.one_hot(x_seq, depth=10)
+        x_seq = tf.tensordot(x_seq, self.token_embedding.embeddings, axes=[[4], [0]])
 
         batch = tf.shape(x_seq)[0]
         T = tf.shape(x_seq)[1]
         state = tf.zeros([batch, self.hidden_dim])
         self.memory.reset()
 
-        outputs = []
+        logits_list = []
+
         for t in range(T):
             early = self.pos_enc(x_seq[:, t])
             early = self.rotation(early)
@@ -74,60 +79,67 @@ class SageAxiom(tf.keras.Model):
             out, [state] = self.agent(x_flat, [state])
             self.memory.write(out)
 
-            memory_tensor = tf.transpose(self.memory.read_all(), [1, 0, 2])
-            memory_context = self.attend_memory(memory_tensor, state)
-            long_term_context = self.longterm.match_context(state)
-            long_term_context = tf.reshape(long_term_context, [batch, self.hidden_dim])
-            full_context = tf.concat([state, memory_context, long_term_context], axis=-1)
-            context = tf.tile(tf.reshape(full_context, [batch, 1, 1, -1]), [1, 20, 20, 1])
+        memory_tensor = tf.transpose(self.memory.read_all(), [1, 0, 2])
+        memory_context = self.attend_memory(memory_tensor, state)
+        long_term_context = self.longterm.match_context(state)
+        long_term_context = tf.reshape(long_term_context, [batch, self.hidden_dim])
+        full_context = tf.concat([state, memory_context, long_term_context], axis=-1)
+        context = tf.tile(tf.reshape(full_context, [batch, 1, 1, -1]), [1, 20, 20, 1])
 
-            projected_input = self.projector(context)
-            attended = self.attn(projected_input)
-            chosen_transform = self.chooser(attended, hard=self.use_hard_choice)
+        projected_input = self.projector(context)
+        attended = self.attn(projected_input)
+        chosen_transform = self.chooser(attended, hard=self.use_hard_choice)
 
-            context_features = tf.concat([state, memory_context], axis=-1)
-            channel_gate = self.gate_scale(context_features)
-            channel_gate = tf.reshape(channel_gate, [batch, 1, 1, self.hidden_dim])
-            channel_gate = tf.clip_by_value(channel_gate, 0.0, 1.0)
+        last_early = self.rotation(self.pos_enc(x_seq[:, -1]))
+        last_input_encoded = self.encoder(self.early_proj(last_early), training=training)
 
-            blended = channel_gate * chosen_transform + (1.0 - channel_gate) * x
+        context_features = tf.concat([state, memory_context], axis=-1)
+        channel_gate = self.gate_scale(context_features)
+        channel_gate = tf.reshape(channel_gate, [batch, 1, 1, self.hidden_dim])
+        channel_gate = tf.clip_by_value(channel_gate, 0.0, 1.0)
 
-            for _ in range(2):
-                refined = self.attn(blended)
-                blended = tf.nn.relu(blended + refined)
+        blended = channel_gate * chosen_transform + (1.0 - channel_gate) * last_input_encoded
 
-            output_logits = self.decoder(blended)
-            refined_logits = self.refiner(output_logits)
-            conservative_logits = self.fallback(blended)
-            w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
-            final_logits = w * refined_logits + (1.0 - w) * conservative_logits
+        for _ in range(2):
+            refined = self.attn(blended)
+            blended = tf.nn.relu(blended + refined)
 
-            outputs.append(final_logits)
+        output_logits = self.decoder(blended)
+        refined_logits = self.refiner(output_logits)
+        conservative_logits = self.fallback(blended)
+        w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
+        final_logits = w * refined_logits + (1.0 - w) * conservative_logits
 
-        outputs = tf.stack(outputs, axis=1)  # [B, T, H, W, 10]
+        logits_list.append(final_logits)
 
         if y_seq is not None:
-            expected_broadcast = tf.one_hot(y_seq, depth=10, dtype=tf.float32)
-            pixelwise_diff = tf.square(expected_broadcast - outputs)
-            spatial_penalty = tf.reduce_mean(tf.nn.relu(tf.reduce_sum(outputs, axis=-1) - 1.0))
+            expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
+            pixelwise_diff = tf.square(expected_broadcast - final_logits)
+            spatial_penalty = tf.reduce_mean(tf.nn.relu(tf.reduce_sum(final_logits, axis=-1) - 1.0))
 
             adjusted_pain, gate, exploration, alpha = self.pain_system(
-                outputs[:, -1], expected_broadcast[:, -1], blended=blended, training=training
+                final_logits, expected_broadcast, blended=blended, training=training
             )
 
             base_loss = tf.reduce_mean(pixelwise_diff)
-            sym_loss = compute_auxiliary_loss(tf.nn.softmax(outputs[:, -1]))
-            trait_loss = self.pain_system.compute_trait_loss(outputs[:, -1], expected_broadcast[:, -1])
+            sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
+            trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
             regional_penalty = 0.01 * spatial_penalty
 
-            probs = tf.nn.softmax(outputs[:, -1])
-            bbox_loss = self.bbox_penalty(probs, expected_broadcast[:, -1])
+            probs = tf.nn.softmax(final_logits)
+            bbox_loss = self.bbox_penalty(probs, expected_broadcast)
             tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
 
             total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + tf.add_n(self.losses)
+
+            if training:
+                logits_sequence_tensor = tf.stack(logits_list, axis=1)
+                temporal_loss = 0.01 * self.temporal_symmetry_loss(logits_sequence_tensor)
+                total_loss += temporal_loss
+
             self.loss_tracker.update_state(total_loss)
 
-        return outputs
+        return final_logits
 
     @property
     def metrics(self):
