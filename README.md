@@ -109,6 +109,7 @@ The longer you train, the more painful and accurate it gets. It’s like therapy
 
 * `core.py`: Main model (`SageAxiom`) class.
 * `layers.py`: All custom layers, including memories, pain, attention, etc.
+* `utils.py`: All utilities for Axiom.
 * `train_axiom.py`: Example training loop.
 * `LICENSE.txt`: [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/).
 * `README.md`: You’re reading it. Whoa.
