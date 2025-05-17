@@ -66,7 +66,10 @@ class SageAxiom(tf.keras.Model):
         logits_list = []
 
         for t in range(T):
-            early = self.pos_enc(x_seq[:, t])
+            xt = x_seq[:, t]  # (batch, H, W, D)
+            if len(xt.shape) == 5:
+                xt = tf.squeeze(xt, axis=1)  # (batch, H, W, D)
+            early = self.pos_enc(xt)
             early = self.rotation(early)
             early = self.early_proj(early)
             x = self.encoder(early, training=training)
