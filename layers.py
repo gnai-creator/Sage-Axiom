@@ -79,7 +79,6 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         self.dense = tf.keras.layers.Dense(channels, activation='tanh')
 
     def call(self, x):
-        # Handle case where x has shape (B, H, W, C1, C2)
         while len(tf.shape(x)) > 4:
             x = tf.reshape(x, [tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], -1])
 
@@ -100,7 +99,6 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
         self.penalty_weight = penalty_weight
 
     def call(self, prediction_probs, expected_onehot):
-        # Shape: [batch, H, W, C]
         pred_mask = tf.reduce_max(prediction_probs, axis=-1) > self.threshold
         true_mask = tf.reduce_max(expected_onehot, axis=-1) > 0.5
 
@@ -170,9 +168,9 @@ class FractalBlock(tf.keras.layers.Layer):
         self.bn = tf.keras.layers.BatchNormalization()
         self.skip = tf.keras.layers.Conv2D(dim, kernel_size=1, padding='same')
 
-    def call(self, x, training=False):  # <-- Adiciona training
+    def call(self, x, training=False):
         out = self.conv(x)
-        out = self.bn(out, training=training)  # <-- Usa o training
+        out = self.bn(out, training=training)
         skip = self.skip(x)
         return tf.nn.relu(out + skip)
 
@@ -199,12 +197,12 @@ class LearnedRotation(tf.keras.layers.Layer):
 
     def call(self, x):
         b = tf.shape(x)[0]
-        pooled = tf.reduce_mean(x, axis=[1,2])  # [B, C]
-        weights = self.selector(pooled)         # [B, 4]
-        weights = tf.reshape(weights, [b, 4, 1, 1, 1])  # For broadcasting
+        pooled = tf.reduce_mean(x, axis=[1,2]) 
+        weights = self.selector(pooled)        
+        weights = tf.reshape(weights, [b, 4, 1, 1, 1]) 
 
         rotated = [rot(x) for rot in self.rotations]
-        stacked = tf.stack(rotated, axis=1)     # [B, 4, H, W, C]
+        stacked = tf.stack(rotated, axis=1)
 
         out = tf.reduce_sum(stacked * weights, axis=1)
         return out
@@ -223,7 +221,7 @@ class MeanderHypothesisLayer(tf.keras.layers.Layer):
     def call(self, x):
         base = self.conv(x)
         shifted = [self.shift_tensor(base, dy, dx) for dy, dx in self.shifts]
-        shifted.append(base)  # Include the base (no shift)
+        shifted.append(base)
         stacked = tf.stack(shifted, axis=0)
         return self.merge(tf.reduce_mean(stacked, axis=0))
 
@@ -251,9 +249,8 @@ class ChoiceHypothesisModule(tf.keras.layers.Layer):
         pooled = tf.reduce_mean(x, axis=[1, 2])
         weights = self.selector(pooled)
 
-        # ⛓️ Entropia SEMPRE computada, mesmo se `hard`
         entropy = -tf.reduce_sum(weights * tf.math.log(weights + 1e-8), axis=-1)
-        self.add_loss(0.01 * tf.reduce_mean(entropy))  # Dá pancadinha educativa no selector
+        self.add_loss(0.01 * tf.reduce_mean(entropy))
 
         if hard:
             idx = tf.argmax(weights, axis=-1)
@@ -292,7 +289,6 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.threshold_memory = ThresholdMemory()
         self.threshold = tf.Variable(0.05, trainable=False)
 
-        # moved to build for proper graph behavior if needed
         self.sensitivity_init = 0.01
         self.sensitivity_channels = 10
 
@@ -304,7 +300,6 @@ class TaskPainSystem(tf.keras.layers.Layer):
         self.doubt_dense2 = tf.keras.layers.Dense(1, activation='sigmoid', name='dense_10')
 
     def build(self, input_shape):
-        # builds sensitivity shape based on last input dim if needed
         self.sensitivity = self.add_weight(
             name="sensitivity",
             shape=(1, 1, 1, self.sensitivity_channels),
@@ -364,11 +359,11 @@ class TaskPainSystem(tf.keras.layers.Layer):
         doubt_loss = 0.01 * tf.reduce_mean(tf.square(doubt_repr)) + 0.01 * tf.reduce_mean(doubt_score)
         self.add_loss(doubt_loss)
     
-        # tf.print("Pain:", self.per_sample_pain,
-        #          "Adjusted:", self.adjusted_pain,
-        #          "Gate:", self.gate,
-        #          "Exploration:", self.exploration_gate,
-        #          "Alpha:", self.alpha)
+        tf.print("Pain:", self.per_sample_pain,
+                 "Adjusted:", self.adjusted_pain,
+                 "Gate:", self.gate,
+                 "Exploration:", self.exploration_gate,
+                 "Alpha:", self.alpha)
     
         return self.adjusted_pain, self.gate, self.exploration_gate, self.alpha
 
@@ -390,7 +385,6 @@ class TaskPainSystem(tf.keras.layers.Layer):
         empathy = tf.reduce_mean(self.alpha) * tf.reduce_mean(self.gate)
         flexibility = tf.reduce_mean(tf.abs(output_logits - expected))
     
-        # Bonus loss baseado nessas "virtudes"
         bonus = (
             -0.01 * ambition +
             0.01 * assertiveness -
