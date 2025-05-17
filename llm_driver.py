@@ -1,6 +1,6 @@
 # Qwen + SageAxiom ARC Solver Notebook
 
-!pip install llama-cpp-python --quiet
+# !pip install llama-cpp-python --quiet
 
 from llama_cpp import Llama
 import json
