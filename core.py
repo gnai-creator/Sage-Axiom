@@ -56,7 +56,9 @@ class SageAxiom(tf.keras.Model):
         return tf.reduce_mean(tf.square(logits_seq - flipped))
 
     def call(self, x_seq, y_seq=None, training=False):
-        x_seq = self.token_embedding(x_seq)  # Now shape (B, T, H, W, D)
+        x_seq = tf.argmax(x_seq, axis=-1)  # transforma one-hot em índices
+        x_seq = self.token_embedding(x_seq)  # agora sim, shape: [B, T, H, W, D]
+
 
         batch = tf.shape(x_seq)[0]
         T = tf.shape(x_seq)[1]
