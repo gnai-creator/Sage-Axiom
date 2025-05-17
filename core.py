@@ -47,7 +47,7 @@ class SageAxiom(tf.keras.Model):
         ])
         self.refiner = OutputRefinement(hidden_dim)
         self.fallback = tf.keras.layers.Conv2D(10, 1)
-        self.gate_scale = tf.keras.layers.Dense(hidden_dim, activation='sigmoid', name="gate_scale")
+        self.gate_scale = tf.keras.layers.Dense(hidden_dim, activation='tanh', name="gate_scale")
 
         self.loss_tracker = tf.keras.metrics.Mean(name="loss")
 
