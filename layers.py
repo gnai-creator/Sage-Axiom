@@ -282,7 +282,14 @@ class TaskPainSystem(tf.keras.layers.Layer):
         avg_pain = tf.reduce_mean(self.adjusted_pain)
         self.threshold_memory.update(avg_pain)
     
-        self.gate = tf.clip_by_value(tf.sigmoid((self.adjusted_pain - self.threshold) * 2.5), 0.0, 1.0)
+        try:
+            raw_gate = tf.sigmoid((self.adjusted_pain - self.threshold) * 2.5)
+            tf.debugging.check_numerics(raw_gate, "NaN in raw_gate")
+            self.gate = tf.clip_by_value(raw_gate, 0.0, 1.0)
+        except tf.errors.InvalidArgumentError:
+            tf.print("⚠️ Fallback: NaN in gate detected. Assigning 0.5")
+            self.gate = tf.ones_like(self.adjusted_pain) * 0.5
+
     
         self.alpha = self.alpha_layer(self.exploration_gate)
         self.alpha = tf.clip_by_value(self.alpha_noise(self.alpha, training=training), 0.001, 0.999)
