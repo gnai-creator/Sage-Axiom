@@ -388,7 +388,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
         empathy = tf.reduce_mean(self.alpha) * tf.reduce_mean(self.gate)
         flexibility = tf.reduce_mean(tf.abs(tf.nn.softmax(output_logits) - expected))
         flexibility = tf.clip_by_value(flexibility, 0.0, 1.0)
-
+        confidence_penalty = tf.reduce_mean(tf.square(confidence - 0.5)) * 0.01  # penaliza confiança muito longe de 0.5
     
         # bonus = (
         #     +0.02 * curiosity        # incentivo principal: explorar diferentes hipóteses
@@ -417,8 +417,9 @@ class TaskPainSystem(tf.keras.layers.Layer):
         bonus *= entropy_scale
         bonus = tf.clip_by_value(bonus, -0.2, 0.2)
         entropy_loss = 0.01 * entropy
-        total_loss = bonus + entropy_loss
+        total_loss = bonus + entropy_loss + conf_penalty
         return tf.clip_by_value(total_loss, 0.0, 1.0)
+
 
 
 
