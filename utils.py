@@ -2,6 +2,15 @@
 
 import tensorflow as tf
 
+def continuity_loss(logits):
+    probs = tf.nn.softmax(logits, axis=-1)
+
+    dx = tf.square(probs[:, :, 1:, :] - probs[:, :, :-1, :])
+    dy = tf.square(probs[:, 1:, :, :] - probs[:, :-1, :, :])
+
+    loss = tf.reduce_mean(dx) + tf.reduce_mean(dy)
+    return 0.01 * loss  # Ajuste o peso
+
 def temporal_symmetry_loss(logits_seq):
     flipped = tf.reverse(logits_seq, axis=[1])
     return tf.reduce_mean(tf.square(logits_seq - flipped))
