@@ -250,11 +250,13 @@ class TaskPainSystem(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         # builds sensitivity shape based on last input dim if needed
-        self.sensitivity = tf.Variable(
-            tf.ones([1, 1, 1, self.sensitivity_channels]) * self.sensitivity_init,
-            trainable=False,
-            name="sensitivity"
+        self.sensitivity = self.add_weight(
+            name="sensitivity",
+            shape=(1, 1, 1, self.sensitivity_channels),
+            initializer=tf.keras.initializers.Constant(self.sensitivity_init),
+            trainable=False
         )
+
         super().build(input_shape)
 
     def call(self, pred, expected, blended=None, training=False):
