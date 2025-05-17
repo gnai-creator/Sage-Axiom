@@ -325,9 +325,13 @@ class TaskPainSystem(tf.keras.layers.Layer):
     
         #exploration = tf.sigmoid((self.per_sample_pain - 0.3) * 3.0)
         #exploration = tf.clip_by_value(tf.pow(self.per_sample_pain + 1e-3, 0.5), 0.05, 0.98)
+        # exploration = tf.clip_by_value(
+        #     tf.pow(self.per_sample_pain + 1e-3, 0.5) * (1.0 + 0.01 * tf.sin(6.28 * self.per_sample_pain)),
+        #     0.1, 0.99)
         exploration = tf.clip_by_value(
-            tf.pow(self.per_sample_pain + 1e-3, 0.5) * (1.0 + 0.01 * tf.sin(6.28 * self.per_sample_pain)),
-            0.1, 0.99)
+            tf.pow(self.per_sample_pain + 1e-3, 0.7) * (1.0 + 0.05 * tf.sin(6.28 * self.per_sample_pain)),
+            0.3, 0.99
+        )
 
         osc = 1.0 + 0.05 * tf.cos(self.per_sample_pain)
         self.exploration_gate = tf.clip_by_value(exploration * osc, 0.001, 0.98)
