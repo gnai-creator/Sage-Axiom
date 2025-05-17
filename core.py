@@ -2,6 +2,7 @@
 import tensorflow as tf
 from layers import *
 from utils import (
+    continuity_loss,
     temporal_symmetry_loss,
     spatial_decay_mask,
     repetition_penalty,
@@ -138,10 +139,11 @@ class SageAxiom(tf.keras.Model):
             repeat_penalty = repetition_penalty(final_logits)
             reverse_penalty_val = reverse_penalty(final_logits, expected_broadcast)
             edge_penalty = edge_alignment_penalty(probs)
+            cont_loss = continuity_loss(final_logits)
 
-            tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
+            #tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
 
-            total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + spread_penalty + repeat_penalty + reverse_penalty_val + edge_penalty + tf.add_n(self.losses)
+            total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + spread_penalty + repeat_penalty + reverse_penalty_val + edge_penalty + cont_loss + tf.add_n(self.losses)
 
             if training:
                 logits_sequence_tensor = tf.stack(logits_list, axis=1)
