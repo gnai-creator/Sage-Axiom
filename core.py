@@ -13,7 +13,7 @@ class SageAxiom(tf.keras.Model):
         self.early_proj = tf.keras.layers.Conv2D(hidden_dim, 1, activation='relu')
         self.encoder = EnhancedEncoder(hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
-        self.pos_enc = PositionalEncoding2D(2)
+        self.pos_enc = PositionalEncoding2D(hidden_dim)  # Fix: use correct channel count
         self.rotation = LearnedRotation(hidden_dim)
 
         self.bbox_penalty = BoundingBoxDiscipline()
@@ -56,7 +56,7 @@ class SageAxiom(tf.keras.Model):
         return tf.reduce_mean(tf.square(logits_seq - flipped))
 
     def call(self, x_seq, y_seq=None, training=False):
-        x_seq = self.token_embedding(x_seq)
+        x_seq = self.token_embedding(x_seq)  # Now shape (B, T, H, W, D)
 
         batch = tf.shape(x_seq)[0]
         T = tf.shape(x_seq)[1]
@@ -67,7 +67,6 @@ class SageAxiom(tf.keras.Model):
 
         for t in range(T):
             xt = x_seq[:, t]  # (batch, H, W, D)
-            
             early = self.pos_enc(xt)
             early = self.rotation(early)
             early = self.early_proj(early)
@@ -91,7 +90,8 @@ class SageAxiom(tf.keras.Model):
         attended = self.attn(projected_input)
         chosen_transform = self.chooser(attended, hard=self.use_hard_choice)
 
-        last_early = self.rotation(self.pos_enc(x_seq[:, -1]))
+        last_xt = x_seq[:, -1]
+        last_early = self.rotation(self.pos_enc(last_xt))
         last_input_encoded = self.encoder(self.early_proj(last_early), training=training)
 
         context_features = tf.concat([state, memory_context], axis=-1)
