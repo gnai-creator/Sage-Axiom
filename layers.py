@@ -318,33 +318,50 @@ class TaskPainSystem(tf.keras.layers.Layer):
 
     def compute_trait_loss(self, output_logits, expected):
         probs = tf.nn.softmax(output_logits)
-        self.confidence = tf.reduce_mean(tf.reduce_max(probs, axis=-1))
-        self.entropy = -tf.reduce_mean(tf.reduce_sum(probs * tf.math.log(probs + 1e-8), axis=-1))
-        self.ambition = tf.nn.relu(self.exploration_gate - 0.5)
-        self.assertiveness = self.gate
-        self.tenacity = tf.nn.relu(self.adjusted_pain - 5.0) * (1.0 - self.exploration_gate)
-        self.faith = tf.reduce_mean(self.alpha) * self.confidence
-        self.curiosity = self.entropy
-        self.patience = tf.exp(-self.adjusted_pain)
-        self.resilience = tf.exp(-tf.abs(self.per_sample_pain - self.adjusted_pain))
-        self.creativity = tf.math.reduce_std(probs)
-        self.empathy = tf.reduce_mean(self.alpha) * tf.reduce_mean(self.gate)
-        self.flexibility = tf.reduce_mean(tf.abs(output_logits - expected))
-
+    
+        confidence = tf.reduce_mean(tf.reduce_max(probs, axis=-1))
+        entropy = -tf.reduce_mean(tf.reduce_sum(probs * tf.math.log(probs + 1e-8), axis=-1))
+        ambition = tf.nn.relu(self.exploration_gate - 0.5)
+        assertiveness = self.gate
+        tenacity = tf.nn.relu(self.adjusted_pain - 5.0) * (1.0 - self.exploration_gate)
+        faith = tf.reduce_mean(self.alpha) * confidence
+        curiosity = entropy
+        patience = tf.exp(-self.adjusted_pain)
+        resilience = tf.exp(-tf.abs(self.per_sample_pain - self.adjusted_pain))
+        creativity = tf.math.reduce_std(probs)
+        empathy = tf.reduce_mean(self.alpha) * tf.reduce_mean(self.gate)
+        flexibility = tf.reduce_mean(tf.abs(output_logits - expected))
+    
+        # Adiciona as métricas monitoráveis
+        self.add_metric(confidence, name="confidence", aggregation="mean")
+        self.add_metric(entropy, name="entropy", aggregation="mean")
+        self.add_metric(tf.reduce_mean(ambition), name="ambition", aggregation="mean")
+        self.add_metric(tf.reduce_mean(assertiveness), name="assertiveness", aggregation="mean")
+        self.add_metric(tf.reduce_mean(tenacity), name="tenacity", aggregation="mean")
+        self.add_metric(faith, name="faith", aggregation="mean")
+        self.add_metric(tf.reduce_mean(patience), name="patience", aggregation="mean")
+        self.add_metric(tf.reduce_mean(resilience), name="resilience", aggregation="mean")
+        self.add_metric(creativity, name="creativity", aggregation="mean")
+        self.add_metric(empathy, name="empathy", aggregation="mean")
+        self.add_metric(flexibility, name="flexibility", aggregation="mean")
+    
+        # Bonus loss baseado nessas "virtudes"
         bonus = (
-            -0.01 * self.ambition +
-            0.01 * self.assertiveness -
-            0.01 * self.tenacity -
-            0.01 * self.faith +
-            0.01 * self.curiosity +
-            0.01 * self.patience +
-            0.01 * self.resilience +
-            0.01 * self.creativity +
-            0.01 * self.empathy -
-            0.01 * self.flexibility
+            -0.01 * ambition +
+            0.01 * assertiveness -
+            0.01 * tenacity -
+            0.01 * faith +
+            0.01 * curiosity +
+            0.01 * patience +
+            0.01 * resilience +
+            0.01 * creativity +
+            0.01 * empathy -
+            0.01 * flexibility
         )
-        entropy_loss = 0.01 * self.entropy
+    
+        entropy_loss = 0.01 * entropy
         return bonus + entropy_loss
+
 
 
 class AttentionOverMemory(tf.keras.layers.Layer):
