@@ -149,7 +149,7 @@ class SageAxiom(tf.keras.Model):
 
             #tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
 
-            total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + spread_penalty + repeat_penalty + reverse_penalty_val + edge_penalty + cont_loss + tf.add_n(self.losses)
+            total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + spread_penalty + repeat_penalty + reverse_penalty_val + edge_penalty + cont_loss + shape_loss + tf.add_n(self.losses)
 
             if training:
                 logits_sequence_tensor = tf.stack(logits_list, axis=1)
