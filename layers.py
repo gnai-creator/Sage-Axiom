@@ -338,17 +338,17 @@ class TaskPainSystem(tf.keras.layers.Layer):
         flexibility = tf.reduce_mean(tf.abs(output_logits - expected))
     
         # Adiciona as métricas monitoráveis
-        self.add_metric(confidence, name="confidence", aggregation="mean")
-        self.add_metric(entropy, name="entropy", aggregation="mean")
-        self.add_metric(tf.reduce_mean(ambition), name="ambition", aggregation="mean")
-        self.add_metric(tf.reduce_mean(assertiveness), name="assertiveness", aggregation="mean")
-        self.add_metric(tf.reduce_mean(tenacity), name="tenacity", aggregation="mean")
-        self.add_metric(faith, name="faith", aggregation="mean")
-        self.add_metric(tf.reduce_mean(patience), name="patience", aggregation="mean")
-        self.add_metric(tf.reduce_mean(resilience), name="resilience", aggregation="mean")
-        self.add_metric(creativity, name="creativity", aggregation="mean")
-        self.add_metric(empathy, name="empathy", aggregation="mean")
-        self.add_metric(flexibility, name="flexibility", aggregation="mean")
+        # self.add_metric(confidence, name="confidence", aggregation="mean")
+        # self.add_metric(entropy, name="entropy", aggregation="mean")
+        # self.add_metric(tf.reduce_mean(ambition), name="ambition", aggregation="mean")
+        # self.add_metric(tf.reduce_mean(assertiveness), name="assertiveness", aggregation="mean")
+        # self.add_metric(tf.reduce_mean(tenacity), name="tenacity", aggregation="mean")
+        # self.add_metric(faith, name="faith", aggregation="mean")
+        # self.add_metric(tf.reduce_mean(patience), name="patience", aggregation="mean")
+        # self.add_metric(tf.reduce_mean(resilience), name="resilience", aggregation="mean")
+        # self.add_metric(creativity, name="creativity", aggregation="mean")
+        # self.add_metric(empathy, name="empathy", aggregation="mean")
+        # self.add_metric(flexibility, name="flexibility", aggregation="mean")
     
         # Bonus loss baseado nessas "virtudes"
         bonus = (
