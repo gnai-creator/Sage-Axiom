@@ -390,16 +390,29 @@ class TaskPainSystem(tf.keras.layers.Layer):
         flexibility = tf.clip_by_value(flexibility, 0.0, 1.0)
 
     
+        # bonus = (
+        #     +0.02 * curiosity        # incentivo principal: explorar diferentes hipóteses
+        #     +0.01 * resilience       # não quebrar ao errar
+        #     +0.01 * patience         # evita decisões impulsivas
+        #     +0.01 * creativity       # variedade ajuda em tarefas abertas
+        #     +0.005 * empathy         # ponderar riscos com confiança
+        #     +0.005 * flexibility     # mudar quando necessário
+        #     -0.005 * tenacity        # penaliza insistência excessiva
+        #     -0.005 * faith           # penaliza crença exagerada em outputs imprecisos
+        #     -0.005 * assertiveness   # controla decisões super decisivas sem base
+        # )
+
         bonus = (
-            +0.02 * curiosity        # incentivo principal: explorar diferentes hipóteses
-            +0.01 * resilience       # não quebrar ao errar
-            +0.01 * patience         # evita decisões impulsivas
-            +0.01 * creativity       # variedade ajuda em tarefas abertas
-            +0.005 * empathy         # ponderar riscos com confiança
-            +0.005 * flexibility     # mudar quando necessário
-            -0.005 * tenacity        # penaliza insistência excessiva
-            -0.005 * faith           # penaliza crença exagerada em outputs imprecisos
-            -0.005 * assertiveness   # controla decisões super decisivas sem base
+            0.01 * ambition +
+            0.01 * assertiveness +
+            0.01 * tenacity +
+            0.01 * faith +
+            0.01 * curiosity +
+            0.01 * patience +
+            0.01 * resilience +
+            0.01 * creativity +
+            0.01 * empathy +
+            0.01 * flexibility
         )
         bonus *= entropy_scale
         bonus = tf.clip_by_value(bonus, -0.2, 0.2)
