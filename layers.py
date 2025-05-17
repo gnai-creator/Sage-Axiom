@@ -91,32 +91,41 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
         pred_mask = tf.reduce_max(prediction_probs, axis=-1) > self.threshold
         true_mask = tf.reduce_max(expected_onehot, axis=-1) > 0.5
 
-        def bbox(mask):
+        def safe_bbox(mask, label):
             coords = tf.where(mask)
-            y_min = tf.reduce_min(coords[:, 1])
-            x_min = tf.reduce_min(coords[:, 2])
-            y_max = tf.reduce_max(coords[:, 1])
-            x_max = tf.reduce_max(coords[:, 2])
-            return y_min, x_min, y_max, x_max
+            count = tf.shape(coords)[0]
+            is_empty = tf.equal(count, 0)
+
+            def fallback():
+                tf.print(f"⚠️ Bounding box failed for:", label, "- using default values")
+                return 0, 0, 1, 1  # min box to avoid divide-by-zero later
+
+            def compute_bbox():
+                y_min = tf.reduce_min(coords[:, 0])
+                x_min = tf.reduce_min(coords[:, 1])
+                y_max = tf.reduce_max(coords[:, 0])
+                x_max = tf.reduce_max(coords[:, 1])
+                return y_min, x_min, y_max, x_max
+
+            return tf.cond(is_empty, fallback, compute_bbox)
 
         penalties = []
-        for b in range(tf.shape(pred_mask)[0]):
-            try:
-                p_y1, p_x1, p_y2, p_x2 = bbox(pred_mask[b])
-                t_y1, t_x1, t_y2, t_x2 = bbox(true_mask[b])
+        batch_size = tf.shape(pred_mask)[0]
 
-                pred_area = tf.cast((p_y2 - p_y1 + 1) * (p_x2 - p_x1 + 1), tf.float32)
-                true_area = tf.cast((t_y2 - t_y1 + 1) * (t_x2 - t_x1 + 1), tf.float32)
+        for b in tf.range(batch_size):
+            p_y1, p_x1, p_y2, p_x2 = safe_bbox(pred_mask[b], label="pred")
+            t_y1, t_x1, t_y2, t_x2 = safe_bbox(true_mask[b], label="true")
 
-                area_penalty = tf.nn.relu(pred_area - true_area) / (true_area + 1.0)
-                center_offset = tf.sqrt(tf.square((p_y1 + p_y2) / 2 - (t_y1 + t_y2) / 2) +
-                                        tf.square((p_x1 + p_x2) / 2 - (t_x1 + t_x2) / 2)) / 20.0
+            pred_area = tf.cast((p_y2 - p_y1 + 1) * (p_x2 - p_x1 + 1), tf.float32)
+            true_area = tf.cast((t_y2 - t_y1 + 1) * (t_x2 - t_x1 + 1), tf.float32)
 
-                penalties.append(area_penalty + center_offset)
-            except Exception as e:
-                tf.print("BoundingBoxDiscipline failed:", e)
-                penalties.append(1.0)
+            area_penalty = tf.nn.relu(pred_area - true_area) / (true_area + 1.0)
+            center_offset = tf.sqrt(
+                tf.square((p_y1 + p_y2) / 2 - (t_y1 + t_y2) / 2) +
+                tf.square((p_x1 + p_x2) / 2 - (t_x1 + t_x2) / 2)
+            ) / 20.0
 
+            penalties.append(area_penalty + center_offset)
 
         return self.penalty_weight * tf.reduce_mean(penalties)
 
@@ -336,19 +345,6 @@ class TaskPainSystem(tf.keras.layers.Layer):
         creativity = tf.math.reduce_std(probs)
         empathy = tf.reduce_mean(self.alpha) * tf.reduce_mean(self.gate)
         flexibility = tf.reduce_mean(tf.abs(output_logits - expected))
-    
-        # Adiciona as métricas monitoráveis
-        # self.add_metric(confidence, name="confidence", aggregation="mean")
-        # self.add_metric(entropy, name="entropy", aggregation="mean")
-        # self.add_metric(tf.reduce_mean(ambition), name="ambition", aggregation="mean")
-        # self.add_metric(tf.reduce_mean(assertiveness), name="assertiveness", aggregation="mean")
-        # self.add_metric(tf.reduce_mean(tenacity), name="tenacity", aggregation="mean")
-        # self.add_metric(faith, name="faith", aggregation="mean")
-        # self.add_metric(tf.reduce_mean(patience), name="patience", aggregation="mean")
-        # self.add_metric(tf.reduce_mean(resilience), name="resilience", aggregation="mean")
-        # self.add_metric(creativity, name="creativity", aggregation="mean")
-        # self.add_metric(empathy, name="empathy", aggregation="mean")
-        # self.add_metric(flexibility, name="flexibility", aggregation="mean")
     
         # Bonus loss baseado nessas "virtudes"
         bonus = (
