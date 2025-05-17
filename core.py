@@ -67,8 +67,7 @@ class SageAxiom(tf.keras.Model):
 
         for t in range(T):
             xt = x_seq[:, t]  # (batch, H, W, D)
-            if len(xt.shape) == 5:
-                xt = tf.squeeze(xt, axis=1)  # (batch, H, W, D)
+            
             early = self.pos_enc(xt)
             early = self.rotation(early)
             early = self.early_proj(early)
