@@ -113,8 +113,10 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
                                         tf.square((p_x1 + p_x2) / 2 - (t_x1 + t_x2) / 2)) / 20.0
 
                 penalties.append(area_penalty + center_offset)
-            except:
-                penalties.append(1.0)  # If something went wrong, punish hard
+            except Exception as e:
+                tf.print("BoundingBoxDiscipline failed:", e)
+                penalties.append(1.0)
+
 
         return self.penalty_weight * tf.reduce_mean(penalties)
 
