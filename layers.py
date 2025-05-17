@@ -375,6 +375,8 @@ class TaskPainSystem(tf.keras.layers.Layer):
     
         confidence = tf.reduce_mean(tf.reduce_max(probs, axis=-1))
         entropy = -tf.reduce_mean(tf.reduce_sum(probs * tf.math.log(probs + 1e-8), axis=-1))
+        entropy = tf.clip_by_value(entropy, 0.0, 2.3)
+        entropy_scale = tf.clip_by_value(1.0 - entropy, 0.1, 1.0)  # quanto menor a entropia, maior o impacto
         ambition = tf.nn.relu(self.exploration_gate - 0.5)
         assertiveness = self.gate
         tenacity = tf.nn.relu(self.adjusted_pain - 5.0) * (1.0 - self.exploration_gate)
@@ -384,23 +386,26 @@ class TaskPainSystem(tf.keras.layers.Layer):
         resilience = tf.exp(-tf.abs(self.per_sample_pain - self.adjusted_pain))
         creativity = tf.math.reduce_std(probs)
         empathy = tf.reduce_mean(self.alpha) * tf.reduce_mean(self.gate)
-        flexibility = tf.reduce_mean(tf.abs(output_logits - expected))
+        flexibility = tf.reduce_mean(tf.abs(tf.nn.softmax(output_logits) - expected))
+        flexibility = tf.clip_by_value(flexibility, 0.0, 1.0)
+
     
         bonus = (
-            -0.01 * ambition +
-            0.01 * assertiveness -
-            0.01 * tenacity -
-            0.01 * faith +
-            0.01 * curiosity +
-            0.01 * patience +
-            0.01 * resilience +
-            0.01 * creativity +
-            0.01 * empathy -
-            0.01 * flexibility
+            +0.02 * curiosity        # incentivo principal: explorar diferentes hipóteses
+            +0.01 * resilience       # não quebrar ao errar
+            +0.01 * patience         # evita decisões impulsivas
+            +0.01 * creativity       # variedade ajuda em tarefas abertas
+            +0.005 * empathy         # ponderar riscos com confiança
+            +0.005 * flexibility     # mudar quando necessário
+            -0.005 * tenacity        # penaliza insistência excessiva
+            -0.005 * faith           # penaliza crença exagerada em outputs imprecisos
+            -0.005 * assertiveness   # controla decisões super decisivas sem base
         )
-    
+        bonus *= entropy_scale
+        bonus = tf.clip_by_value(bonus, -0.2, 0.2)
         entropy_loss = 0.01 * entropy
-        return bonus + entropy_loss
+        total_loss = bonus + entropy_loss
+        return tf.clip_by_value(total_loss, 0.0, 1.0)
 
 
 
