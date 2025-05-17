@@ -259,7 +259,7 @@ class ChoiceHypothesisModule(tf.keras.layers.Layer):
             one_hot = tf.one_hot(idx, depth=4, dtype=tf.float32)[:, :, tf.newaxis, tf.newaxis, tf.newaxis]
             return tf.reduce_sum(stacked * one_hot, axis=1)
         else:
-            weights = tf.reshape(weights, [-1, 4, 1, 1, 1])
+            weights = tf.reshape(weights, [-1, self.num_hypotheses, 1, 1, 1])
             return tf.reduce_sum(stacked * weights, axis=1)
 
 class ThresholdMemory(tf.keras.layers.Layer):
