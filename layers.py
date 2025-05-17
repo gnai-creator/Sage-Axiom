@@ -110,7 +110,7 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
             is_empty = tf.equal(count, 0)
 
             def fallback():
-                tf.print(f"⚠️ Bounding box failed for:", label, "- using default bbox [0,0,1,1]")
+                #tf.print(f"⚠️ Bounding box failed for:", label, "- using default bbox [0,0,1,1]")
                 return (
                     tf.constant(0.0, dtype=tf.float32),
                     tf.constant(0.0, dtype=tf.float32),
@@ -314,7 +314,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
             tf.debugging.check_numerics(raw_gate, "NaN in raw_gate")
             self.gate = tf.clip_by_value(raw_gate, 0.0, 1.0)
         except tf.errors.InvalidArgumentError:
-            tf.print("⚠️ Fallback: NaN in gate detected. Assigning 0.5")
+            #tf.print("⚠️ Fallback: NaN in gate detected. Assigning 0.5")
             self.gate = tf.ones_like(self.adjusted_pain) * 0.5
 
     
@@ -338,11 +338,11 @@ class TaskPainSystem(tf.keras.layers.Layer):
         doubt_loss = 0.01 * tf.reduce_mean(tf.square(doubt_repr)) + 0.01 * tf.reduce_mean(doubt_score)
         self.add_loss(doubt_loss)
     
-        tf.print("Pain:", self.per_sample_pain,
-                 "Adjusted:", self.adjusted_pain,
-                 "Gate:", self.gate,
-                 "Exploration:", self.exploration_gate,
-                 "Alpha:", self.alpha)
+        # tf.print("Pain:", self.per_sample_pain,
+        #          "Adjusted:", self.adjusted_pain,
+        #          "Gate:", self.gate,
+        #          "Exploration:", self.exploration_gate,
+        #          "Alpha:", self.alpha)
     
         return self.adjusted_pain, self.gate, self.exploration_gate, self.alpha
 
