@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 
-def bounding_shape_penalty(self, pred_mask, true_mask):
+def bounding_shape_penalty(pred_mask, true_mask):
     pred_size = tf.reduce_sum(tf.cast(pred_mask, tf.float32), axis=[1, 2])
     true_size = tf.reduce_sum(tf.cast(true_mask, tf.float32), axis=[1, 2])
     return tf.reduce_mean(tf.abs(pred_size - true_size))
