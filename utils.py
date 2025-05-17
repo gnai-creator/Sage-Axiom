@@ -29,16 +29,19 @@ def reverse_penalty(logits, expected):
     return 0.01 * penalty
 
 def edge_alignment_penalty(output_probs):
+    # Extrai bordas
     top = output_probs[:, 0:1, :, :]
     bottom = output_probs[:, -1:, :, :]
     left = output_probs[:, :, 0:1, :]
     right = output_probs[:, :, -1:, :]
 
-    # Soma as probabilidades das bordas
+    # Soma total de probabilidade nas bordas
     edge_sum = tf.reduce_sum(top) + tf.reduce_sum(bottom) + tf.reduce_sum(left) + tf.reduce_sum(right)
 
-    # Normaliza pelo número total de borda
-    num_pixels = tf.cast(tf.size(top) + tf.size(bottom) + tf.size(left) + tf.size(right), tf.float32)
-    penalty = edge_sum / num_pixels
+    # Número total de elementos considerados
+    total_pixels = tf.cast(tf.size(top) + tf.size(bottom) + tf.size(left) + tf.size(right), tf.float32)
+
+    penalty = edge_sum / total_pixels
     return 0.01 * penalty
+
 
