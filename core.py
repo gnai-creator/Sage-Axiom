@@ -8,7 +8,7 @@ class SageAxiom(tf.keras.Model):
         self.hidden_dim = hidden_dim
         self.use_hard_choice = use_hard_choice
 
-        self.token_embedding = tf.keras.layers.Embedding(input_dim=10, output_dim=self.hidden_dim)
+        self.token_embedding = TokenEmbedding(vocab_size=10, dim=self.hidden_dim)
 
         self.early_proj = tf.keras.layers.Conv2D(hidden_dim, 1, activation='relu')
         self.encoder = EnhancedEncoder(hidden_dim)
@@ -56,8 +56,7 @@ class SageAxiom(tf.keras.Model):
         return tf.reduce_mean(tf.square(logits_seq - flipped))
 
     def call(self, x_seq, y_seq=None, training=False):
-        x_seq = tf.one_hot(x_seq, depth=10)
-        x_seq = tf.tensordot(x_seq, self.token_embedding.embeddings, axes=[[4], [0]])
+        x_seq = self.token_embedding(x_seq)
 
         batch = tf.shape(x_seq)[0]
         T = tf.shape(x_seq)[1]
