@@ -429,7 +429,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
         bonus *= entropy_scale
         bonus = tf.clip_by_value(bonus, -0.2, 0.2)
         entropy_loss = 0.01 * entropy
-        total_loss = bonus + entropy_loss + conf_penalty + logit_penalty
+        total_loss = bonus + entropy_loss + confidence_penalty + logit_penalty
         return tf.clip_by_value(total_loss, 0.0, 1.0)
 
 
