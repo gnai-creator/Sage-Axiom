@@ -99,7 +99,7 @@ class SageAxiom(tf.keras.Model):
         w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
         final_logits = w * refined_logits + (1.0 - w) * conservative_logits
 
-        print(tf.argmax(final_logits[0], axis=-1))
+        # print(tf.argmax(final_logits[0], axis=-1))
 
         if y_seq is not None:
             expected_broadcast = tf.one_hot(y_seq[:, -1], depth=10, dtype=tf.float32)
@@ -117,8 +117,8 @@ class SageAxiom(tf.keras.Model):
 
             probs = tf.nn.softmax(final_logits)
             bbox_loss = self.bbox_penalty(probs, expected_broadcast)
-            # tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
-            tf.print("bbox_penalty:", bbox_loss)
+            tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
+
             total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + tf.add_n(self.losses)
             self.loss_tracker.update_state(total_loss)
 
