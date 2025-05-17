@@ -12,7 +12,7 @@ class SageAxiom(tf.keras.Model):
         self.encoder = EnhancedEncoder(hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
         self.pos_enc = PositionalEncoding2D(2)
-        self.rotation = LearnedRotation()
+        self.rotation = LearnedRotation(hidden_dim)
 
         self.bbox_penalty = BoundingBoxDiscipline()
         self.attn = MultiHeadAttentionWrapper(hidden_dim, heads=8)
