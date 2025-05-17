@@ -1,6 +1,13 @@
 # core.py
 import tensorflow as tf
 from layers import *
+from utils import (
+    temporal_symmetry_loss,
+    spatial_decay_mask,
+    repetition_penalty,
+    reverse_penalty,
+    edge_alignment_penalty,
+)
 
 class SageAxiom(tf.keras.Model):
     def __init__(self, hidden_dim=64, use_hard_choice=False):
@@ -50,43 +57,6 @@ class SageAxiom(tf.keras.Model):
 
         self.flat_dense1 = tf.keras.layers.Dense(self.hidden_dim, activation='relu', name="dense_5158")
         self.flat_dense2 = tf.keras.layers.Dense(self.hidden_dim, name="dense_7")
-
-    def temporal_symmetry_loss(self, logits_seq):
-        flipped = tf.reverse(logits_seq, axis=[1])
-        return tf.reduce_mean(tf.square(logits_seq - flipped))
-
-    def spatial_decay_mask(self, shape, decay_rate=0.1):
-        h, w = shape[1], shape[2]
-        yy, xx = tf.meshgrid(tf.range(h), tf.range(w), indexing='ij')
-        dist = tf.sqrt(tf.cast(yy**2 + xx**2, tf.float32))
-        decay = tf.exp(-decay_rate * dist)
-        decay = tf.expand_dims(decay, axis=0)
-        decay = tf.expand_dims(decay, axis=-1)
-        return decay
-
-    def repetition_penalty(self, logits):
-        probs = tf.nn.softmax(logits, axis=-1)
-        entropy = -tf.reduce_sum(probs * tf.math.log(probs + 1e-8), axis=-1)
-        penalty = tf.reduce_mean(entropy)
-        return 0.01 * penalty
-
-    def reverse_penalty(self, logits, expected):
-        probs = tf.nn.softmax(logits, axis=-1)
-        expected_mask = tf.reduce_max(expected, axis=-1, keepdims=True)
-        non_target = 1.0 - expected_mask
-        penalty = tf.reduce_mean(probs * non_target)
-        return 0.01 * penalty
-
-    def edge_alignment_penalty(self, output_probs):
-        # Penaliza se padrões encostarem nas bordas
-        edge_mask = tf.ones_like(output_probs[:, :, :, :1])
-        edge_mask = tf.concat([
-            edge_mask[:, 0:1],  # top edge
-            edge_mask[:, -1:],  # bottom edge
-            edge_mask[:, :, 0:1],  # left edge
-            edge_mask[:, :, -1:]  # right edge
-        ], axis=1)
-        return 0.01 * tf.reduce_mean(output_probs * edge_mask)
 
     def call(self, x_seq, y_seq=None, training=False):
         x_seq = self.token_embedding(x_seq)
@@ -162,19 +132,19 @@ class SageAxiom(tf.keras.Model):
 
             probs = tf.nn.softmax(final_logits)
             bbox_loss = self.bbox_penalty(probs, expected_broadcast)
-            decay_mask = self.spatial_decay_mask(tf.shape(final_logits))
+            decay_mask = spatial_decay_mask(tf.shape(final_logits))
             spread_penalty = tf.reduce_mean(probs * decay_mask) * 0.01
-            repeat_penalty = self.repetition_penalty(final_logits)
-            reverse_penalty = self.reverse_penalty(final_logits, expected_broadcast)
-            edge_penalty = self.edge_alignment_penalty(probs)
+            repeat_penalty = repetition_penalty(final_logits)
+            reverse_penalty_val = reverse_penalty(final_logits, expected_broadcast)
+            edge_penalty = edge_alignment_penalty(probs)
 
             tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
 
-            total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + spread_penalty + repeat_penalty + reverse_penalty + edge_penalty + tf.add_n(self.losses)
+            total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + spread_penalty + repeat_penalty + reverse_penalty_val + edge_penalty + tf.add_n(self.losses)
 
             if training:
                 logits_sequence_tensor = tf.stack(logits_list, axis=1)
-                temporal_loss = 0.01 * self.temporal_symmetry_loss(logits_sequence_tensor)
+                temporal_loss = 0.01 * temporal_symmetry_loss(logits_sequence_tensor)
                 total_loss += temporal_loss
 
             self.loss_tracker.update_state(total_loss)
