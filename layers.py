@@ -329,7 +329,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
         #     tf.pow(self.per_sample_pain + 1e-3, 0.5) * (1.0 + 0.01 * tf.sin(6.28 * self.per_sample_pain)),
         #     0.1, 0.99)
         exploration = tf.clip_by_value(
-            tf.pow(self.per_sample_pain + 1e-3, 0.7) * (1.0 + 0.05 * tf.sin(6.28 * self.per_sample_pain)),
+            tf.pow(self.per_sample_pain + 1e-3, 0.55) * (1.0 + 0.02 * tf.sin(6.28 * self.per_sample_pain)),
             0.3, 0.99
         )
 
