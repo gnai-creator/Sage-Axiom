@@ -132,6 +132,7 @@ class SageAxiom(tf.keras.Model):
             base_loss = tf.reduce_mean(pixelwise_diff)
             sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
+            trait_loss = tf.clip_by_value(trait_loss, 0.0, 1.0)
             regional_penalty = 0.01 * spatial_penalty
 
             temperature = 1.5
