@@ -134,7 +134,8 @@ class SageAxiom(tf.keras.Model):
             trait_loss = self.pain_system.compute_trait_loss(final_logits, expected_broadcast)
             regional_penalty = 0.01 * spatial_penalty
 
-            probs = tf.nn.softmax(final_logits)
+            temperature = 1.5
+            probs = tf.nn.softmax(final_logits / temperature)
             bbox_loss = self.bbox_penalty(probs, expected_broadcast)
             decay_mask = spatial_decay_mask(tf.shape(final_logits))
             spread_penalty = tf.reduce_mean(probs * decay_mask) * 0.01
@@ -150,6 +151,13 @@ class SageAxiom(tf.keras.Model):
             shape_loss = bounding_shape_penalty(pred_mask, true_mask) * 0.01
 
             #tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
+            spread_penalty *= 0.005
+            repeat_penalty *= 0.001
+            reverse_penalty_val *= 0.001
+            edge_penalty *= 0.001
+            cont_loss *= 0.001
+
+            tf.print("trait_loss", trait_loss, "bbox_loss", bbox_loss, "shape_loss", shape_loss)
 
             total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + spread_penalty + repeat_penalty + reverse_penalty_val + edge_penalty + cont_loss + shape_loss + tf.add_n(self.losses)
 
