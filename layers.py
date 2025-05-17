@@ -321,7 +321,8 @@ class TaskPainSystem(tf.keras.layers.Layer):
         mood_mod = 1.0 + 0.01 * tf.sin(raw_pain * 3.14)
         self.per_sample_pain = tf.clip_by_value(raw_pain * mood_mod, 0.0, 10.0)
     
-        exploration = tf.sigmoid((self.per_sample_pain - 3.0) * 0.2)
+        #exploration = tf.sigmoid((self.per_sample_pain - 0.3) * 3.0)
+        exploration = tf.clip_by_value(tf.pow(self.per_sample_pain + 1e-3, 0.5), 0.05, 0.98)
         osc = 1.0 + 0.05 * tf.cos(self.per_sample_pain)
         self.exploration_gate = tf.clip_by_value(exploration * osc, 0.001, 0.98)
     
@@ -341,7 +342,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
 
     
         self.alpha = self.alpha_layer(self.exploration_gate)
-        self.alpha = tf.clip_by_value(self.alpha_noise(self.alpha, training=training), 0.001, 0.999)
+        self.alpha = tf.clip_by_value(self.alpha_noise(self.alpha, training=training), 0.001, 0.8)
     
         tf.debugging.check_numerics(self.per_sample_pain, "NaN in per_sample_pain")
         tf.debugging.check_numerics(self.adjusted_pain, "NaN in adjusted_pain")
@@ -388,8 +389,9 @@ class TaskPainSystem(tf.keras.layers.Layer):
         empathy = tf.reduce_mean(self.alpha) * tf.reduce_mean(self.gate)
         flexibility = tf.reduce_mean(tf.abs(tf.nn.softmax(output_logits) - expected))
         flexibility = tf.clip_by_value(flexibility, 0.0, 1.0)
-        confidence_penalty = tf.reduce_mean(tf.square(confidence - 0.5)) * 0.01  # penaliza confiança muito longe de 0.5
-    
+        confidence_penalty = tf.reduce_mean(tf.square(confidence - 0.5)) * 0.1  # penaliza confiança muito longe de 0.5
+        logit_std = tf.math.reduce_std(output_logits)
+        logit_penalty = tf.clip_by_value(logit_std - 2.0, 0.0, 10.0) * 0.01
         # bonus = (
         #     +0.02 * curiosity        # incentivo principal: explorar diferentes hipóteses
         #     +0.01 * resilience       # não quebrar ao errar
@@ -417,7 +419,7 @@ class TaskPainSystem(tf.keras.layers.Layer):
         bonus *= entropy_scale
         bonus = tf.clip_by_value(bonus, -0.2, 0.2)
         entropy_loss = 0.01 * entropy
-        total_loss = bonus + entropy_loss + conf_penalty
+        total_loss = bonus + entropy_loss + conf_penalty + logit_penalty
         return tf.clip_by_value(total_loss, 0.0, 1.0)
 
 
