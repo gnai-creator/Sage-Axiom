@@ -3,6 +3,7 @@
 import tensorflow as tf
 from layers import *
 from utils import (
+    bounding_shape_penalty,
     continuity_loss,
     temporal_symmetry_loss,
     spatial_decay_mask,
@@ -141,6 +142,10 @@ class SageAxiom(tf.keras.Model):
             reverse_penalty_val = reverse_penalty(final_logits, expected_broadcast)
             edge_penalty = edge_alignment_penalty(probs)
             cont_loss = continuity_loss(final_logits)
+
+            pred_mask = tf.reduce_max(probs, axis=-1) > 0.5
+            true_mask = tf.reduce_max(expected_broadcast, axis=-1) > 0.5
+            shape_loss = self.bounding_shape_penalty(pred_mask, true_mask) * 0.05
 
             #tf.print("bbox_penalty:", bbox_loss, "channel_gate_mean:", tf.reduce_mean(channel_gate))
 
