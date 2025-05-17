@@ -7,6 +7,15 @@ def compute_auxiliary_loss(output):
     symmetry_loss = tf.reduce_mean(tf.square(output - flipped))
     return 0.01 * symmetry_loss
 
+class TokenEmbedding(tf.keras.layers.Layer):
+    def __init__(self, vocab_size=10, dim=64):
+        super().__init__()
+        self.embed = tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=dim)
+
+    def call(self, x):
+        return self.embed(x)
+
+
 class OutputRefinement(tf.keras.layers.Layer):
     def __init__(self, hidden_dim):
         super().__init__()
