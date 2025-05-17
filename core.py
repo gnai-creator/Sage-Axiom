@@ -95,8 +95,6 @@ class SageAxiom(tf.keras.Model):
         chosen_transform = self.chooser(attended, hard=self.use_hard_choice)
 
         last_xt = x_seq[:, -1]
-        if len(last_xt.shape) == 5:
-            last_xt = tf.squeeze(last_xt, axis=1)
         last_early = self.rotation(self.pos_enc(last_xt))
         last_input_encoded = self.encoder(self.early_proj(last_early), training=training)
 
