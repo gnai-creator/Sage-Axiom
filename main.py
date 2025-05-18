@@ -57,6 +57,7 @@ if __name__ == "__main__":
     with open("arc-agi_test_challenges.json") as f:
         tasks = json.load(f)
 
+    print("[INFO] Preparando dados para treinamento...")
     X_train_all, y_train_all = [], []
     for task in tasks.values():
         for pair in task["train"]:
@@ -71,7 +72,6 @@ if __name__ == "__main__":
     y_all = tf.stack(y_train_all)
 
     X_all_onehot = tf.one_hot(X_all, depth=10)
-    y_all = y_all
 
     X_train_final, X_val, y_train_final, y_val = train_test_split(
         X_all_onehot.numpy(), y_all.numpy(), test_size=0.2, random_state=42)
@@ -81,17 +81,21 @@ if __name__ == "__main__":
     y_train_final = tf.convert_to_tensor(y_train_final, dtype=tf.int32)
     y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
 
+    print("[INFO] Compilando modelo...")
     model = SageAxiom(hidden_dim=128, use_hard_choice=False)
     model.compile(optimizer=tf.keras.optimizers.Adam(
         learning_rate=0.001), loss=None, metrics=[])
     model(X_train_final[:1])
 
+    print("[INFO] Iniciando treinamento...")
     history = model.fit(X_train_final, y_train_final, validation_data=(
         X_val, y_val), epochs=EPOCHS, verbose=1)
 
-    print("Treinamento concluído. Histórico:", {
-          k: [float(f) for f in v] for k, v in history.history.items()})
+    print("[INFO] Treinamento concluído. Histórico:")
+    for k, v in history.history.items():
+        print(f"  {k}: {[round(float(f), 4) for f in v]}")
 
+    print("[INFO] Iniciando avaliação das tarefas...")
     for i, task_id in enumerate(tasks.keys()):
         if total_tasks >= TARGET_TASKS or (time.time() - start_time) > TIME_LIMIT_MINUTES * 60:
             print("[INFO] Tempo esgotado ou tarefas completas.")
@@ -101,8 +105,8 @@ if __name__ == "__main__":
         input_grid = task["train"][0]["input"]
         expected_output = task["train"][0]["output"]
 
-        print(
-            f"[INFO] Task ID: {task_id} ({total_tasks+1}/{TARGET_TASKS})")
+        print(f"[INFO] Task ID: {task_id} ({total_tasks+1}/{TARGET_TASKS})")
+        print("[INFO] Chamando LLM para gerar código...")
 
         code = llm_driver.prompt_llm(input_grid, llm_driver.prompt_template)
         result = run_code(code, input_grid)
@@ -110,11 +114,11 @@ if __name__ == "__main__":
         success = False
 
         if result["success"] and compare_outputs(result["output"], expected_output):
-            print("[INFO] Match via Qwen")
+            print("[INFO] LLM acertou o resultado.")
             success = True
             predicted = result["output"]
         else:
-            print("[INFO] Falha via Qwen → tentando SageAxiom")
+            print("[INFO] LLM falhou. Tentando SageAxiom...")
             x = tf.convert_to_tensor(
                 [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))], dtype=tf.int32)
             x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
@@ -123,13 +127,14 @@ if __name__ == "__main__":
                 y_pred["logits"][0], axis=-1).numpy().tolist()
 
             if compare_outputs(fallback_output, expected_output):
-                print("[INFO] Match via SageAxiom (fallback)")
+                print("[INFO] SageAxiom acertou (fallback).")
                 success = True
                 predicted = fallback_output
             else:
-                print("[INFO] Falha completa")
+                print("[INFO] Nenhuma solução correta encontrada.")
 
         if success:
+            print("[INFO] Processando testes para task correta...")
             for t in task["test"]:
                 test_input = t["input"]
 
@@ -153,9 +158,10 @@ if __name__ == "__main__":
 
         total_tasks += 1
 
+    print("[INFO] Salvando resultados...")
     with open("submission.json", "w", encoding="utf-8") as f:
         json.dump(submission_dict, f, ensure_ascii=False)
 
     print("[INFO] Submissão salva: submission.json")
-    print(f"🌟 Tasks processadas: {total_tasks}")
+    print(f"[INFO] Tasks processadas: {total_tasks}")
     print(f"[INFO] Matches corretos: {correct_tasks}")

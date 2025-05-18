@@ -12,9 +12,9 @@ import tensorflow as tf
 # === Inicialização do Qwen ===
 
 # model_path = "/kaggle/input/qwen-3/gguf/32b-gguf/1/Qwen3-32B-Q4_K_M.gguf"
-model_path = os.path.expanduser("Qwen3-32B-Q4_K_M.gguf")
+model_path = os.path.expanduser("Qwen3-14B-Q4_K_M.gguf")
 if not os.path.exists(model_path):
-    model_path = os.path.expanduser("./Qwen3-32B-Q4_K_M.gguf")
+    model_path = os.path.expanduser("./Qwen3-14B-Q4_K_M.gguf")
     print(f"Modelo GGUF não encontrado em {model_path}. Verifique o caminho.")
 assert os.path.exists(model_path), "Modelo GGUF não encontrado."
 
