@@ -87,7 +87,8 @@ class SageAxiom(tf.keras.Model):
         outputs = self(x, y, training=False)
         val_loss = outputs["loss"]
         self.val_loss_tracker.update_state(val_loss)
-        return {m.name: m.result() for m in self.metrics}
+        return {"loss": self.val_loss_tracker.result()}
+
 
     def call(self, x_seq, y_seq=None, training=False):
         if x_seq.shape.rank != 4:

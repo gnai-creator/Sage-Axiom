@@ -25,7 +25,7 @@ correct_tasks = 0
 submission_dict = defaultdict(list)
 
 print(
-    f"⏱️ Iniciando processo por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos (~{SECONDS_PER_TASK:.1f}s por task) às {datetime.datetime.now()}.")
+    f"\u23f1\ufe0f Iniciando processo por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos (~{SECONDS_PER_TASK:.1f}s por task) às {datetime.datetime.now()}.")
 
 
 def run_code(code: str, input_matrix: list) -> dict:
@@ -71,6 +71,7 @@ if __name__ == "__main__":
     y_all = tf.stack(y_train_all)
 
     X_all_onehot = tf.one_hot(X_all, depth=10)
+    y_all = y_all
 
     X_train_final, X_val, y_train_final, y_val = train_test_split(
         X_all_onehot.numpy(), y_all.numpy(), test_size=0.2, random_state=42)
@@ -83,13 +84,13 @@ if __name__ == "__main__":
     model = SageAxiom(hidden_dim=128, use_hard_choice=False)
     model.compile(optimizer=tf.keras.optimizers.Adam(
         learning_rate=0.001), loss=None, metrics=[])
-    dummy_input = tf.one_hot(tf.zeros((1, 30, 30), dtype=tf.int32), depth=10)
-    model(dummy_input)
+    model(X_train_final[:1])
 
     history = model.fit(X_train_final, y_train_final, validation_data=(
         X_val, y_val), epochs=EPOCHS, verbose=1)
 
-    print("Treinamento concluído. Histórico:", history.history)
+    print("Treinamento concluído. Histórico:", {
+          k: [float(f) for f in v] for k, v in history.history.items()})
 
     for i, task_id in enumerate(tasks.keys()):
         if total_tasks >= TARGET_TASKS or (time.time() - start_time) > TIME_LIMIT_MINUTES * 60:
@@ -117,10 +118,9 @@ if __name__ == "__main__":
             x = tf.convert_to_tensor(
                 [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))], dtype=tf.int32)
             x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
-
-            y_pred = model(x_onehot[0], training=False)
+            y_pred = model(x_onehot, training=False)
             fallback_output = tf.argmax(
-                y_pred["logits"], axis=-1).numpy().tolist()
+                y_pred["logits"][0], axis=-1).numpy().tolist()
 
             if compare_outputs(fallback_output, expected_output):
                 print("\u2705 Match via SageAxiom (fallback)")
@@ -144,18 +144,18 @@ if __name__ == "__main__":
                         [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))], dtype=tf.int32)
                     x_onehot_test = tf.one_hot(
                         x_test, depth=10, dtype=tf.float32)
-                    y_pred_test = model(x_onehot_test[0], training=False)
+                    y_pred_test = model(x_onehot_test, training=False)
                     pred_test = tf.argmax(
-                        y_pred_test["logits"], axis=-1).numpy().tolist()
+                        y_pred_test["logits"][0], axis=-1).numpy().tolist()
                     submission_dict[task_id].append(pred_test)
 
             correct_tasks += 1
 
         total_tasks += 1
 
-    with open("submission.json", "w") as f:
-        json.dump(submission_dict, f)
+    with open("submission.json", "w", encoding="utf-8") as f:
+        json.dump(submission_dict, f, ensure_ascii=False)
 
-    print(f"\n\ud83d\udce6 Submissão salva: submission.json")
+    print("\n\ud83d\udce6 Submissão salva: submission.json")
     print(f"🌟 Tasks processadas: {total_tasks}")
-    print(f"✅ Matches corretos: {correct_tasks}")
+    print(f"\u2705 Matches corretos: {correct_tasks}")
