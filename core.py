@@ -34,7 +34,7 @@ class SageAxiom(tf.keras.Model):
         self.longterm = LongTermMemory(
             memory_size=128, embedding_dim=hidden_dim)
         self.chooser = ChoiceHypothesisModule(hidden_dim)
-        self.pain_system = TaskPainSystem(hidden_dim)
+        self.pain_system = TaskPainSystem(latent_dim=hidden_dim)
         self.attend_memory = AttentionOverMemory(hidden_dim)
 
         self.projector = tf.keras.layers.Conv2D(hidden_dim, 1)
@@ -70,7 +70,6 @@ class SageAxiom(tf.keras.Model):
 
     def train_step(self, data):
         x, y = data
-
         with tf.GradientTape() as tape:
             outputs = self(x, y, training=True)
             total_loss = outputs["loss"]
@@ -84,9 +83,6 @@ class SageAxiom(tf.keras.Model):
         outputs = self(x, y, training=False)
         return {"loss": outputs["loss"]}
 
-    def build(self, input_shape):
-        super().build(input_shape)
-
     def call(self, x_seq, y_seq=None, training=False):
         if x_seq.shape.rank != 5:
             raise ValueError(
@@ -96,13 +92,13 @@ class SageAxiom(tf.keras.Model):
         T = x_seq.shape[1]
         if T is None:
             raise ValueError(
-                "T (número de frames) precisa ser conhecido estaticamente para usar range(T)")
+                "T precisa ser conhecido estaticamente para usar range(T)")
 
-        state = tf.zeros([batch, self.hidden_dim])
+        state = tf.zeros(tf.stack([batch, self.hidden_dim]))
         self.memory.reset()
 
         for t in range(T):
-            xt = x_seq[:, t]  # [batch, H, W, 10]
+            xt = x_seq[:, t]
             xt = self.token_embedding(xt)
             early = self.pos_enc(xt)
             early = self.rotation(early)
@@ -120,10 +116,9 @@ class SageAxiom(tf.keras.Model):
         memory_context = self.attend_memory(memory_tensor, state)
         long_term_context = self.longterm.match_context(state)
         long_term_context = tf.reshape(
-            long_term_context, [batch, self.hidden_dim])
+            long_term_context, tf.stack([batch, self.hidden_dim]))
         full_context = tf.concat(
             [state, memory_context, long_term_context], axis=-1)
-
         full_context.set_shape([None, self.hidden_dim * 3])
 
         context = tf.tile(tf.reshape(
@@ -142,6 +137,7 @@ class SageAxiom(tf.keras.Model):
         context_features = tf.concat([state, memory_context], axis=-1)
         channel_gate = self.gate_scale(context_features)
         channel_gate = tf.reshape(channel_gate, [batch, 1, 1, self.hidden_dim])
+        channel_gate = tf.tile(channel_gate, [1, 30, 30, 1])
         channel_gate = tf.clip_by_value(channel_gate, 0.0, 1.0)
 
         blended = channel_gate * chosen_transform + \
@@ -164,9 +160,11 @@ class SageAxiom(tf.keras.Model):
         expected_broadcast = tf.one_hot(
             tf.cast(y_last, tf.int32), depth=10, dtype=tf.float32)
 
-        adjusted_pain, gate, exploration, alpha = self.pain_system(
-            final_logits, expected_broadcast, blended=blended, training=training
-        )
+        pain_output = self.pain_system(
+            final_logits, expected_broadcast, blended, training=training)
+
+        adjusted_pain = tf.reshape(pain_output["pain"], [batch, 1, 1, 1])
+        adjusted_pain = tf.clip_by_value(adjusted_pain, 0.0, 10.0)
 
         pixelwise_diff = tf.square(expected_broadcast - final_logits)
         spatial_penalty = tf.reduce_mean(tf.nn.relu(
@@ -174,8 +172,6 @@ class SageAxiom(tf.keras.Model):
 
         base_loss = tf.reduce_mean(pixelwise_diff)
         sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
-        trait_loss = tf.clip_by_value(self.pain_system.compute_trait_loss(
-            final_logits, expected_broadcast, adjusted_pain), 0.0, 1.0)
         regional_penalty = 0.01 * spatial_penalty
 
         probs = tf.nn.softmax(final_logits / 1.5)
@@ -194,18 +190,29 @@ class SageAxiom(tf.keras.Model):
             expected_broadcast, axis=-1) > 0.5, tf.float32)
         shape_loss = bounding_shape_penalty(pred_mask, true_mask) * 0.025
 
-        total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + \
+        total_loss = base_loss + sym_loss + regional_penalty + bbox_loss + \
             spread_penalty + repeat_penalty_val + reverse_penalty_val + \
-            edge_penalty_val + cont_loss_val + shape_loss + 0.05 * adjusted_pain
-
-        if alpha is not None and isinstance(alpha, tf.Tensor):
-            total_loss += 0.01 * tf.reduce_mean(alpha)
+            edge_penalty_val + cont_loss_val + shape_loss + \
+            0.05 * tf.reduce_mean(adjusted_pain)
 
         if training:
             logits_seq = tf.expand_dims(final_logits, axis=1)
             total_loss += 0.01 * temporal_symmetry_loss(logits_seq)
 
         self.add_loss(total_loss)
+
+        tf.print("base_loss", base_loss)
+        tf.print("sym_loss", sym_loss)
+        tf.print("regional_penalty", regional_penalty)
+        tf.print("bbox_loss", bbox_loss)
+        tf.print("spread_penalty", spread_penalty)
+        tf.print("repeat_penalty_val", repeat_penalty_val)
+        tf.print("reverse_penalty_val", reverse_penalty_val)
+        tf.print("edge_penalty_val", edge_penalty_val)
+        tf.print("cont_loss_val", cont_loss_val)
+        tf.print("shape_loss", shape_loss)
+        tf.print("adjusted_pain", tf.reduce_mean(adjusted_pain))
+        tf.print("total_loss", total_loss)
 
         return {"logits": final_logits, "loss": total_loss}
 

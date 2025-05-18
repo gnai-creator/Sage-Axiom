@@ -1,7 +1,5 @@
 # layers.py
 
-from tensorflow.keras import layers
-from tensorflow import keras
 import tensorflow as tf
 import logging
 
@@ -345,66 +343,143 @@ class ThresholdMemory(tf.keras.layers.Layer):
         return mean + tf.random.normal([], stddev=std * 0.5)
 
 
-class TaskPainSystem(keras.Model):
-    def __init__(self, latent_dim=128, task_output_dim=10, **kwargs):
-        super(TaskPainSystem, self).__init__(**kwargs)
-        self.latent_dim = latent_dim
-        self.task_output_dim = task_output_dim
+class TaskPainSystem(tf.keras.layers.Layer):
+    def __init__(self, dim):
+        super().__init__()
+        self.threshold_memory = ThresholdMemory()
+        self.threshold = tf.Variable(0.05, trainable=False)
 
-        # Shared encoder (like a brainstem, if you want to be poetic about it)
-        self.encoder = keras.Sequential([
-            layers.Conv2D(32, kernel_size=3,
-                          activation='relu', padding='same'),
-            layers.MaxPooling2D(pool_size=2),
-            layers.Conv2D(64, kernel_size=3,
-                          activation='relu', padding='same'),
-            layers.MaxPooling2D(pool_size=2),
-            layers.Flatten(),
-            layers.Dense(latent_dim, activation='relu')
-        ])
+        self.sensitivity_init = 0.01
+        self.sensitivity_channels = 10
 
-        # Task output (you know, for doing actual work)
-        self.task_head = keras.Sequential([
-            layers.Dense(64, activation='relu'),
-            layers.Dense(task_output_dim, activation='softmax')
-        ])
+        self.alpha_layer = tf.keras.layers.Dense(1, activation='sigmoid')
+        self.alpha_noise = tf.keras.layers.GaussianNoise(0.05)
 
-        # Pain output (when your model hurts)
-        self.pain_head = keras.Sequential([
-                layers.Dense(64, activation='relu'),
-                layers.Dense(1, activation='softplus')  # always positive
-            ])
+        self.doubt_pool = tf.keras.layers.GlobalAveragePooling2D()
+        self.doubt_dense1 = tf.keras.layers.Dense(
+            dim, activation='relu', name='dense_9')
+        self.doubt_dense2 = tf.keras.layers.Dense(
+            1, activation='sigmoid', name='dense_10')
 
+    def build(self, input_shape):
+        self.sensitivity = self.add_weight(
+            name="sensitivity",
+            shape=(1, 1, 1, self.sensitivity_channels),
+            initializer=tf.keras.initializers.Constant(self.sensitivity_init),
+            trainable=False
+        )
+        super().build(input_shape)
 
     def call(self, pred, expected, blended=None, training=False):
+        threshold_val = self.threshold_memory.get_adaptive_threshold()
+        threshold_val = tf.cond(
+            tf.math.logical_or(tf.math.is_nan(threshold_val),
+                               tf.math.is_inf(threshold_val)),
+            lambda: tf.constant(0.05, dtype=tf.float32),
+            lambda: threshold_val
+        )
+        self.threshold.assign(threshold_val)
 
-        
+        diff = tf.clip_by_value(tf.square(pred - expected), 0.0, 1.0)
+        raw_pain = tf.reduce_mean(
+            tf.sqrt(self.sensitivity * diff + 1e-6), axis=[1, 2, 3], keepdims=True)
+        raw_pain = tf.clip_by_value(raw_pain, 0.0, 10.0)
+
+        mood_mod = 1.0 + 0.01 * tf.sin(raw_pain * 3.14)
+        per_sample_pain = tf.clip_by_value(
+            raw_pain * (1.0 + 0.05 * tf.sin(raw_pain * 6.28)) * mood_mod, 0.0, 10.0)
+
+        exploration = tf.clip_by_value(
+            tf.pow(per_sample_pain + 1e-3, 0.65) *
+            (1.0 + 0.02 * tf.sin(6.28 * per_sample_pain)),
+            0.3, 0.99
+        )
+
+        osc = 1.0 + 0.05 * tf.cos(per_sample_pain)
+        exploration_gate = tf.clip_by_value(exploration * osc, 0.001, 0.98)
+
+        safe_denominator = tf.clip_by_value(
+            1.0 + 0.5 * exploration_gate, 1e-3, 10.0)
+        adjusted_pain = tf.clip_by_value(
+            per_sample_pain / safe_denominator, 0.0, 10.0)
+
+        avg_pain = tf.reduce_mean(adjusted_pain)
+        self.threshold_memory.update(avg_pain)
+
+        raw_gate_input = (adjusted_pain - self.threshold) * 2.5
+        raw_gate_input = tf.clip_by_value(raw_gate_input, -20.0, 20.0)
+        raw_gate = tf.sigmoid(raw_gate_input)
+        gate = tf.clip_by_value(raw_gate, 0.0, 1.0)
+
+        alpha = self.alpha_layer(exploration_gate)
+        alpha = tf.clip_by_value(self.alpha_noise(
+            alpha, training=training), 0.001, 0.8)
+
+        self.per_sample_pain = per_sample_pain
+        self.adjusted_pain = adjusted_pain
+        self.exploration_gate = exploration_gate
+        self.gate = gate
+        self.alpha = alpha
+
+        self.add_loss(0.01 * tf.reduce_mean(tf.square(alpha - 0.5)))
+        self.add_loss(0.01 * tf.reduce_mean(tf.square(exploration_gate - 0.5)))
+
         if blended is None:
             blended = tf.zeros_like(pred)
 
-        x = tf.concat([pred, expected, blended], axis=-1)
-        x = self.encoder(x, training=training)
-        task_output = self.task_head(x)
-        pain_output = self.pain_head(x)
-        return {"task": task_output, "pain": pain_output}
+        pooled = self.doubt_pool(blended)
+        doubt_repr = self.doubt_dense1(pooled)
+        doubt_score = self.doubt_dense2(doubt_repr)
+        doubt_loss = 0.01 * \
+            tf.reduce_mean(tf.square(doubt_repr)) + 0.01 * \
+            tf.reduce_mean(doubt_score)
+        self.add_loss(doubt_loss)
 
+        return adjusted_pain, gate, exploration_gate, alpha
 
-    def compute_loss(self, data):
-        x, y = data
-        y_task = y["task"]
-        y_pain = y.get("pain")  # optional
+    def compute_trait_loss(self, output_logits, expected, per_sample_pain):
+        probs = tf.nn.softmax(output_logits)
 
-        outputs = self(x, training=True)
-        task_loss = self.compiled_loss(y_task, outputs["task"])
+        confidence = tf.reduce_mean(tf.reduce_max(probs, axis=-1))
+        entropy = - \
+            tf.reduce_mean(tf.reduce_sum(
+                probs * tf.math.log(probs + 1e-8), axis=-1))
+        entropy = tf.clip_by_value(entropy, 0.0, 2.3)
+        entropy_scale = tf.clip_by_value(1.0 - entropy, 0.1, 1.0)
 
-        if y_pain is not None:
-            pain_loss = keras.losses.mean_squared_error(
-                y_pain, outputs["pain"])
-            total_loss = task_loss + tf.reduce_mean(pain_loss)
-        else:
-            total_loss = task_loss
+        ambition = tf.nn.relu(self.exploration_gate - 0.5)
+        assertiveness = self.gate
+        tenacity = tf.nn.relu(self.adjusted_pain - 5.0) * \
+            (1.0 - self.exploration_gate)
+        faith = tf.reduce_mean(self.alpha) * confidence
+        curiosity = entropy
+        patience = tf.exp(-self.adjusted_pain)
+        resilience = tf.exp(-tf.abs(per_sample_pain - self.adjusted_pain))
+        creativity = tf.math.reduce_std(probs)
+        empathy = tf.reduce_mean(self.alpha) * tf.reduce_mean(self.gate)
+        flexibility = tf.reduce_mean(tf.abs(probs - expected))
+        flexibility = tf.clip_by_value(flexibility, 0.0, 1.0)
+        confidence_penalty = tf.reduce_mean(tf.square(confidence - 0.5)) * 0.1
+        logit_std = tf.math.reduce_std(output_logits)
+        logit_penalty = tf.clip_by_value(logit_std - 2.0, 0.0, 10.0) * 0.01
 
-        return total_loss
+        bonus = (
+            0.01 * ambition +
+            0.01 * assertiveness +
+            0.01 * tenacity +
+            0.01 * faith +
+            0.02 * curiosity +
+            0.01 * patience +
+            0.01 * resilience +
+            0.01 * creativity +
+            0.01 * empathy +
+            0.01 * flexibility
+        )
+        bonus *= entropy_scale
+        bonus = tf.clip_by_value(bonus, -0.2, 0.2)
+        entropy_loss = 0.01 * entropy
+        total_loss = bonus + entropy_loss + confidence_penalty + logit_penalty
+        return tf.clip_by_value(total_loss, 0.0, 1.0)
 
 
 class AttentionOverMemory(tf.keras.layers.Layer):
