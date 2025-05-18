@@ -1,20 +1,17 @@
-# Qwen + SageAxiom ARC Solver Notebook
-
 import re
-from llama_cpp import Llama
 import json
 import os
-import time
+import hashlib
+from llama_cpp import Llama
 from collections import defaultdict
 import tensorflow as tf
-import hashlib
 
 # === Inicialização do Qwen ===
-
 model_path = os.path.expanduser("qwen2.5-1.5b-instruct-q4_k_m.gguf")
 if not os.path.exists(model_path):
     model_path = os.path.expanduser("./qwen2.5-1.5b-instruct-q4_k_m.gguf")
-    print(f"Modelo GGUF não encontrado em {model_path}. Verifique o caminho.")
+    print(
+        f"[ERRO] Modelo GGUF não encontrado em {model_path}. Verifique o caminho.")
 assert os.path.exists(model_path), "Modelo GGUF não encontrado."
 
 llm = Llama(
@@ -45,7 +42,8 @@ def hash_task_input(grid: list) -> str:
 def extract_transform_function(code: str) -> str | None:
     """Isola e retorna somente a função transform(grid) se for segura."""
     match = re.search(
-        r"(def transform\(grid\):(?:\n|.)*?)(?=^def |\Z)", code, re.MULTILINE)
+        r"(def transform\(grid\):(?:\n|.)*?)(?=^def |\Z)", code, re.MULTILINE
+    )
     if not match:
         print("[ERRO] Não foi possível encontrar a função transform.")
         return None
@@ -118,7 +116,7 @@ def prompt_llm(task_input: list, prompt_template: str, feedback: str = None) -> 
         result = llm.create_chat_completion(
             messages=[
                 {"role": "system",
-                 "content": "Você é um solucionador de puzzles visuais do ARC."},
+                    "content": "Você é um solucionador de puzzles visuais do ARC."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.6
