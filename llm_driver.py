@@ -99,7 +99,7 @@ def prompt_llm(task_input: list, prompt_template: str) -> str:
                     "content": "Você é um solucionador de puzzles visuais do ARC."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3
+            temperature=0.6
         )
         full_code = result['choices'][0]['message']['content']
         function_code = extract_transform_function(full_code)
