@@ -9,6 +9,7 @@ from utils import (
     reverse_penalty,
     edge_alignment_penalty,
     compute_auxiliary_loss,
+    compute_all_losses
 )
 
 
@@ -89,7 +90,6 @@ class SageAxiom(tf.keras.Model):
         self.val_loss_tracker.update_state(val_loss)
         return {"loss": self.val_loss_tracker.result()}
 
-
     def call(self, x_seq, y_seq=None, training=False):
         if x_seq.shape.rank != 4:
             raise ValueError(
@@ -168,59 +168,17 @@ class SageAxiom(tf.keras.Model):
 
         pain_output = self.pain_system(
             final_logits, expected_broadcast, blended, training=training)
-        adjusted_pain = tf.reshape(pain_output["pain"], [
-                                   static_batch, 1, 1, 1])
-        adjusted_pain = tf.clip_by_value(adjusted_pain, 0.0, 10.0)
 
-        pixelwise_diff = tf.square(expected_broadcast - final_logits)
-        spatial_penalty = tf.reduce_mean(tf.nn.relu(
-            tf.reduce_sum(final_logits, axis=-1) - 1.0))
-
-        base_loss = tf.reduce_mean(pixelwise_diff)
-        sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
-        regional_penalty = 0.01 * spatial_penalty
-
-        probs = tf.nn.softmax(final_logits / 1.5)
-        bbox_loss = self.bbox_penalty(probs, expected_broadcast)
-        decay_mask = spatial_decay_mask(tf.shape(final_logits))
-        spread_penalty = tf.reduce_mean(probs * decay_mask) * 0.005
-        repeat_penalty_val = repetition_penalty(final_logits) * 0.001
-        reverse_penalty_val = reverse_penalty(
-            final_logits, expected_broadcast) * 0.001
-        edge_penalty_val = edge_alignment_penalty(probs) * 0.001
-        cont_loss_val = continuity_loss(final_logits) * 0.001
-
-        pred_mask = tf.cast(tf.stop_gradient(
-            tf.reduce_max(probs, axis=-1) > 0.5), tf.float32)
-        true_mask = tf.cast(tf.reduce_max(
-            expected_broadcast, axis=-1) > 0.5, tf.float32)
-        shape_loss = bounding_shape_penalty(pred_mask, true_mask) * 0.0001
-
-        total_loss = base_loss + sym_loss + regional_penalty + bbox_loss + \
-            spread_penalty + repeat_penalty_val + reverse_penalty_val + \
-            edge_penalty_val + cont_loss_val + shape_loss + \
-            0.05 * tf.reduce_mean(adjusted_pain)
-
-        total_loss = tf.clip_by_value(total_loss, 0.0, 100.0)
+        losses = compute_all_losses(
+            final_logits, y_seq, blended, pain_output["pain"])
+        self.last_losses = losses
+        total_loss = tf.add_n(list(losses.values()))
 
         if training:
             logits_seq = tf.expand_dims(final_logits, axis=1)
             total_loss += 0.01 * temporal_symmetry_loss(logits_seq)
 
         self.add_loss(total_loss)
-
-        tf.print("\nbase_loss", base_loss)
-        tf.print("sym_loss", sym_loss)
-        tf.print("regional_penalty", regional_penalty)
-        tf.print("bbox_loss", bbox_loss)
-        tf.print("spread_penalty", spread_penalty)
-        tf.print("repeat_penalty_val", repeat_penalty_val)
-        tf.print("reverse_penalty_val", reverse_penalty_val)
-        tf.print("edge_penalty_val", edge_penalty_val)
-        tf.print("cont_loss_val", cont_loss_val)
-        tf.print("shape_loss", shape_loss)
-        tf.print("adjusted_pain", tf.reduce_mean(adjusted_pain))
-        tf.print("total_loss", total_loss)
 
         return {"logits": final_logits, "loss": total_loss}
 

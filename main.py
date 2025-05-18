@@ -140,23 +140,26 @@ if __name__ == "__main__":
         else:
             log("[INFO] LLM falhou. Tentando SageAxiom...")
             log("[INFO] Executando SageAxiom...")
-            log("[INFO] Input grid:", input_grid)
-            log("[INFO] Expected output:", expected_output)
+            log("[INFO] Input grid: {input_grid}")
+            log("[INFO] Expected output: {expected_output}")
             log("[INFO] Código gerado pelo LLM:")
             log(code)
             log("[INFO] Executando SageAxiom com fallback...")
             # Executa SageAxiom com fallback
             x = tf.convert_to_tensor(
                 [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))], dtype=tf.int32)
-            log("[INFO] Shape do input:", x.shape)
+            log("[INFO] Shape do input: {x.shape}")
             x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
-            log("[INFO] Shape do input one-hot:", x_onehot.shape)
+            log("[INFO] Shape do input one-hot: {x_onehot.shape}")
             y_pred = model(x_onehot, training=False)
-            log("[INFO] Predição SageAxiom:", y_pred["logits"][0].numpy())
-            log("[INFO] Shape do input:", x_onehot.shape)
-            log("[INFO] Shape do expected output:", tf.convert_to_tensor(
-                expected_output, dtype=tf.int32).shape)
-            log("[INFO] Shape da predição:", y_pred["logits"][0].shape)
+            log("[{task_id}] Detalhamento de perdas:")
+            for name, value in model.last_losses.items():
+                log(f"  - {name}: {value.numpy():.6f}")
+            log("[INFO] Predição SageAxiom: {y_pred['logits'][0].numpy()}")
+            log("[INFO] Shape do input: {x_onehot.shape}")
+            log(
+                "[INFO] Shape do expected output: {tf.convert_to_tensor(expected_output, dtype=tf.int32).shape}")
+            log("[INFO] Shape da predição: {y_pred['logits'][0].shape}")
 
             fallback_output = tf.argmax(
                 y_pred["logits"][0], axis=-1).numpy().tolist()
@@ -176,12 +179,12 @@ if __name__ == "__main__":
 
                 code_test = llm_driver.prompt_llm(
                     test_input, llm_driver.prompt_template)
-                log("[INFO] Código gerado para teste:", code_test)
-                log("[INFO] Test input:", test_input)
+                log("[INFO] Código gerado para teste: {code_test}")
+                log("[INFO] Test input: {test_input}")
                 log("[INFO] Executando código gerado para teste...")
-                log("[INFO] Código gerado:\n", code_test)
+
                 result_test = run_code(code_test, test_input)
-                log("[INFO] Resultado do teste:", result_test)
+                log("[INFO] Resultado do teste: {result_test}")
 
                 if result_test["success"]:
                     submission_dict[task_id].append(result_test["output"])
@@ -189,31 +192,27 @@ if __name__ == "__main__":
                     log("[INFO] Código gerado falhou no teste:",
                         result_test["error"])
                     log("[INFO] Executando SageAxiom para teste...")
-                    log("[INFO] Input para teste:", test_input)
+                    log("[INFO] Input para teste: {test_input}")
                     # Executa SageAxiom para o teste
 
                     x_test = tf.convert_to_tensor(
                         [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))], dtype=tf.int32)
-                    log("[INFO] Shape do input de teste:", x_test.shape)
-                    log("[INFO] Input de teste:", x_test.numpy())
+                    log("[INFO] Shape do input de teste: {x_test.shape}")
+                    log("[INFO] Input de teste: {x_test}")
                     x_onehot_test = tf.one_hot(
                         x_test, depth=10, dtype=tf.float32)
-                    log("[INFO] Shape do input one-hot de teste:",
-                        x_onehot_test.shape)
-                    log("[INFO] Input one-hot de teste:",
-                        x_onehot_test.numpy())
+                    log(
+                        "[INFO] Shape do input one-hot de teste: {x_onehot_test.shape}")
+                    log("[INFO] Input one-hot de teste: {x_onehot_test}")
                     y_pred_test = model(x_onehot_test, training=False)
-                    log("[INFO] Predição SageAxiom para teste:",
-                        y_pred_test["logits"][0].numpy())
-                    log("[INFO] Shape do input de teste:",
-                        x_onehot_test.shape)
-                    log("[INFO] Shape do expected output de teste:",
-                        tf.convert_to_tensor(t["output"], dtype=tf.int32).shape)
-                    log("[INFO] Shape da predição de teste:",
-                        y_pred_test["logits"][0].shape)
+                    log("[INFO] Predição SageAxiom para teste: {y_pred_test}")
+                    log("[INFO] Shape do input de teste: {x_onehot_test.shape}")
+                    log(
+                        "[INFO] Shape do expected output de teste: {tf.convert_to_tensor(t['output'], dtype=tf.int32).shape}")
+                    log("[INFO] Shape da predição de teste: {y_pred_test}")
                     pred_test = tf.argmax(
                         y_pred_test["logits"][0], axis=-1).numpy().tolist()
-                    log("[INFO] Predição SageAxiom para teste:", pred_test)
+                    log("[INFO] Predição SageAxiom para teste: {pred_test}")
                     submission_dict[task_id].append(pred_test)
 
             correct_tasks += 1

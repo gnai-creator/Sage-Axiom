@@ -1,6 +1,7 @@
 # utils.py
 
 import tensorflow as tf
+from layers import BoundingBoxDiscipline
 
 
 def bounding_shape_penalty(pred_mask, true_mask):
@@ -76,3 +77,41 @@ def compute_auxiliary_loss(probs):
     entropy = -tf.reduce_sum(probs * tf.math.log(probs + 1e-8), axis=-1)
     mean_entropy = tf.reduce_mean(entropy)
     return 0.01 * mean_entropy
+
+
+def compute_all_losses(pred, expected, blended, pain_output):
+    losses = {}
+
+    probs = tf.nn.softmax(pred)
+
+    expected_broadcast = tf.one_hot(
+        tf.cast(expected, tf.int32), depth=10, dtype=tf.float32)
+
+    # Losses
+    losses["base"] = tf.reduce_mean(tf.square(expected_broadcast - pred))
+    losses["symmetry"] = compute_auxiliary_loss(probs)
+    losses["spatial_penalty"] = tf.reduce_mean(tf.nn.relu(
+        tf.reduce_sum(probs, axis=-1) - 1.0)) * 0.01
+    losses["bbox"] = BoundingBoxDiscipline()(probs, expected_broadcast)
+    losses["decay"] = tf.reduce_mean(
+        probs * spatial_decay_mask(tf.shape(pred))) * 0.005
+    losses["repeat"] = repetition_penalty(pred) * 0.001
+    losses["reverse"] = reverse_penalty(pred, expected_broadcast) * 0.001
+    losses["edge"] = edge_alignment_penalty(probs) * 0.001
+    losses["continuity"] = continuity_loss(pred) * 0.001
+
+    pred_mask = tf.cast(tf.stop_gradient(
+        tf.reduce_max(probs, axis=-1) > 0.5), tf.float32)
+    true_mask = tf.cast(tf.reduce_max(
+        expected_broadcast, axis=-1) > 0.5, tf.float32)
+    losses["shape"] = bounding_shape_penalty(pred_mask, true_mask) * 0.0001
+
+    if pain_output is not None:
+        adjusted_pain = tf.clip_by_value(tf.reshape(
+            pain_output, [tf.shape(pred)[0], 1, 1, 1]), 0.0, 10.0)
+        losses["pain"] = tf.reduce_mean(adjusted_pain) * 0.05
+
+    for name, value in losses.items():
+        tf.print(name, value)
+
+    return losses
