@@ -14,8 +14,8 @@ import llm_driver
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 EPOCHS = 10
-TARGET_TASKS = 20
-EXPECTED_HOURS = 0.5
+TARGET_TASKS = 21
+EXPECTED_HOURS = 1
 TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
 SECONDS_PER_TASK = (TIME_LIMIT_MINUTES * 60) / TARGET_TASKS
 
@@ -25,7 +25,7 @@ correct_tasks = 0
 submission_dict = defaultdict(list)
 
 print(
-    f"\u23f1\ufe0f Iniciando processo por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos (~{SECONDS_PER_TASK:.1f}s por task) às {datetime.datetime.now()}.")
+    f"[INFO] Iniciando processo por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos (~{SECONDS_PER_TASK:.1f}s por task) às {datetime.datetime.now()}.")
 
 
 def run_code(code: str, input_matrix: list) -> dict:
@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
     for i, task_id in enumerate(tasks.keys()):
         if total_tasks >= TARGET_TASKS or (time.time() - start_time) > TIME_LIMIT_MINUTES * 60:
-            print("\u23f0 Tempo esgotado ou tarefas completas.")
+            print("[INFO] Tempo esgotado ou tarefas completas.")
             break
 
         task = tasks[task_id]
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         expected_output = task["train"][0]["output"]
 
         print(
-            f"\n\ud83d\udd0d Task ID: {task_id} ({total_tasks+1}/{TARGET_TASKS})")
+            f"[INFO] Task ID: {task_id} ({total_tasks+1}/{TARGET_TASKS})")
 
         code = llm_driver.prompt_llm(input_grid, llm_driver.prompt_template)
         result = run_code(code, input_grid)
@@ -110,11 +110,11 @@ if __name__ == "__main__":
         success = False
 
         if result["success"] and compare_outputs(result["output"], expected_output):
-            print("\u2705 Match via Qwen")
+            print("[INFO] Match via Qwen")
             success = True
             predicted = result["output"]
         else:
-            print("\u274c Falha via Qwen → tentando SageAxiom")
+            print("[INFO] Falha via Qwen → tentando SageAxiom")
             x = tf.convert_to_tensor(
                 [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))], dtype=tf.int32)
             x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
@@ -123,11 +123,11 @@ if __name__ == "__main__":
                 y_pred["logits"][0], axis=-1).numpy().tolist()
 
             if compare_outputs(fallback_output, expected_output):
-                print("\u2705 Match via SageAxiom (fallback)")
+                print("[INFO] Match via SageAxiom (fallback)")
                 success = True
                 predicted = fallback_output
             else:
-                print("\ud83d\udea8 Falha completa")
+                print("[INFO] Falha completa")
 
         if success:
             for t in task["test"]:
@@ -156,6 +156,6 @@ if __name__ == "__main__":
     with open("submission.json", "w", encoding="utf-8") as f:
         json.dump(submission_dict, f, ensure_ascii=False)
 
-    print("\n\ud83d\udce6 Submissão salva: submission.json")
+    print("[INFO] Submissão salva: submission.json")
     print(f"🌟 Tasks processadas: {total_tasks}")
-    print(f"\u2705 Matches corretos: {correct_tasks}")
+    print(f"[INFO] Matches corretos: {correct_tasks}")
