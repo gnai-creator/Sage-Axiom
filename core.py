@@ -84,7 +84,7 @@ class SageAxiom(tf.keras.Model):
         self.val_loss_tracker.update_state(loss)
         return {"loss": self.val_loss_tracker.result()}
 
-    def call(self, x_seq, z_task=None, y_seq=None, training=False):
+    def call(self, x_seq, y_seq=None, training=False):
         if x_seq.shape.rank != 4:
             raise ValueError(
                 "Esperado input de shape [batch, height, width, 10]")
@@ -114,9 +114,6 @@ class SageAxiom(tf.keras.Model):
 
         full_context = tf.concat(
             [state, memory_context, long_term_context], axis=-1)
-
-        if z_task is not None:
-            full_context = tf.concat([full_context, z_task], axis=-1)
 
         context = tf.reshape(full_context, [batch, 1, 1, -1])
         context = tf.tile(context, [1, 30, 30, 1])

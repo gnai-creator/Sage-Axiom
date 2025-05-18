@@ -6,11 +6,9 @@ import numpy as np
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
 from core import SageAxiom
-from layers import TaskEncoder
 import llm_driver
 from functions import *
-from tensorflow.python.trackable.base import Trackable
-import shutil
+
 
 # === Hiperparâmetros e limites ===
 EPOCHS = 1
@@ -85,7 +83,6 @@ for task_id, task in list(tasks.items())[:TARGET_TASKS]:
         except Exception as e:
             print(f"{name}: ERROR {e}")
         # Builda com dummy input
-    export_task_embedding(task_id, hidden_dim=128)
 
     feedback = None
     attempt = 0
@@ -113,7 +110,7 @@ for task_id, task in list(tasks.items())[:TARGET_TASKS]:
                 x = tf.convert_to_tensor(
                     [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
                 x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
-                y_pred = model(x_onehot, z_task=z_task, training=False)
+                y_pred = model(x_onehot, training=False)
                 fallback_output = tf.argmax(
                     y_pred["logits"][0], axis=-1).numpy().tolist()
 
@@ -145,7 +142,7 @@ for task_id, task in list(tasks.items())[:TARGET_TASKS]:
             x_test = tf.convert_to_tensor(
                 [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))])
             x_onehot_test = tf.one_hot(x_test, depth=10, dtype=tf.float32)
-            y_pred_test = model(x_onehot_test, z_task=z_task, training=False)
+            y_pred_test = model(x_onehot_test, training=False)
             pred_test = tf.argmax(
                 y_pred_test["logits"][0], axis=-1).numpy().tolist()
             submission_dict[task_id].append(pred_test)
