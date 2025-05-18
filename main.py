@@ -13,6 +13,23 @@ import llm_driver
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+# === Execução dos tasks ===
+
+TARGET_TASKS = 20
+EXPECTED_HOURS = 0.5
+TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
+SECONDS_PER_TASK = (TIME_LIMIT_MINUTES * 60) / TARGET_TASKS
+
+start_time = time.time()
+total_tasks = 0
+correct_tasks = 0
+submission_dict = defaultdict(list)
+
+print(
+    f"⏱️ Iniciando processo por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos (~{SECONDS_PER_TASK:.1f}s por task) as {datetime.datetime.now()}.")
+
+
+
 
 def run_code(code: str, input_matrix: list) -> dict:
     scope = {}

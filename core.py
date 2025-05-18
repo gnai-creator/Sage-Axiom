@@ -162,7 +162,6 @@ class SageAxiom(tf.keras.Model):
 
         pain_output = self.pain_system(
             final_logits, expected_broadcast, blended, training=training)
-
         adjusted_pain = tf.reshape(pain_output["pain"], [batch, 1, 1, 1])
         adjusted_pain = tf.clip_by_value(adjusted_pain, 0.0, 10.0)
 
@@ -188,13 +187,13 @@ class SageAxiom(tf.keras.Model):
             tf.reduce_max(probs, axis=-1) > 0.5), tf.float32)
         true_mask = tf.cast(tf.reduce_max(
             expected_broadcast, axis=-1) > 0.5, tf.float32)
-        shape_loss = bounding_shape_penalty(pred_mask, true_mask) * 0.025
+        shape_loss = bounding_shape_penalty(pred_mask, true_mask) * 0.001
 
         total_loss = base_loss + sym_loss + regional_penalty + bbox_loss + \
             spread_penalty + repeat_penalty_val + reverse_penalty_val + \
             edge_penalty_val + cont_loss_val + shape_loss + \
             0.05 * tf.reduce_mean(adjusted_pain)
-
+        total_loss = tf.clip_by_value(total_loss, 0.0, 100.0)
         if training:
             logits_seq = tf.expand_dims(final_logits, axis=1)
             total_loss += 0.01 * temporal_symmetry_loss(logits_seq)

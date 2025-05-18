@@ -118,14 +118,19 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
 
 
 class BoundingBoxDiscipline(tf.keras.layers.Layer):
-    def __init__(self, threshold=0.3, penalty_weight=0.05):
+    def __init__(self, penalty_weight=0.05):
         super().__init__()
-        self.threshold = threshold
-        self.penalty_weight = penalty_weight
+        self.penalty_weight = tf.Variable(0.05, trainable=True)
+
 
     def call(self, prediction_probs, expected_onehot):
-        pred_mask = tf.reduce_max(prediction_probs, axis=-1) > self.threshold
-        true_mask = tf.reduce_max(expected_onehot, axis=-1) > 0.5
+        # Use classe dominante como máscara
+        pred_classes = tf.argmax(prediction_probs, axis=-1)
+        true_classes = tf.argmax(expected_onehot, axis=-1)
+
+        # Considerar tudo que não é "classe de fundo"
+        pred_mask = pred_classes > 0
+        true_mask = true_classes > 0
 
         def compute_penalty(pair):
             pred, true = pair
@@ -133,7 +138,6 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
             def safe_bbox(mask):
                 coords = tf.where(mask)
                 count = tf.shape(coords)[0]
-                is_empty = tf.equal(count, 0)
 
                 def fallback():
                     return tf.constant([0.0, 0.0, 1.0, 1.0], dtype=tf.float32)
@@ -145,7 +149,7 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
                     x_max = tf.cast(tf.reduce_max(coords[:, 1]), tf.float32)
                     return tf.stack([y_min, x_min, y_max, x_max])
 
-                return tf.cond(is_empty, fallback, compute)
+                return tf.cond(count > 0, compute, fallback)
 
             p_box = safe_bbox(pred)
             t_box = safe_bbox(true)
@@ -164,10 +168,27 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
                           (t_box[1] + t_box[3]) / 2.0)
             ) / 20.0
 
-            return area_penalty + center_offset
+            inter_ymin = tf.maximum(p_box[0], t_box[0])
+            inter_xmin = tf.maximum(p_box[1], t_box[1])
+            inter_ymax = tf.minimum(p_box[2], t_box[2])
+            inter_xmax = tf.minimum(p_box[3], t_box[3])
+            inter_area = tf.maximum(
+                0.0, inter_ymax - inter_ymin + 1.0) * tf.maximum(0.0, inter_xmax - inter_xmin + 1.0)
+            union_area = pred_area + true_area - inter_area + 1e-6
+            iou = inter_area / union_area
+            iou_penalty = 1.0 - iou
+
+            total_penalty = area_penalty + center_offset + iou_penalty
+            return tf.where(
+                tf.reduce_any(true) & tf.reduce_any(pred),
+                tf.tanh(total_penalty),
+                0.0
+            )
 
         penalties = tf.map_fn(
-            compute_penalty, (pred_mask, true_mask), fn_output_signature=tf.float32)
+            compute_penalty, (pred_mask, true_mask),
+            fn_output_signature=tf.float32
+        )
 
         return self.penalty_weight * tf.reduce_mean(penalties)
 
@@ -371,14 +392,12 @@ class TaskPainSystem(keras.Model):
 
         # Pain output (when your model hurts)
         self.pain_head = keras.Sequential([
-                layers.Dense(64, activation='relu'),
-                layers.Dense(1, activation='softplus')  # always positive
-            ])
-
+            layers.Dense(64, activation='relu'),
+            layers.Dense(1, activation='softplus')  # always positive
+        ])
 
     def call(self, pred, expected, blended=None, training=False):
 
-        
         if blended is None:
             blended = tf.zeros_like(pred)
 
@@ -387,7 +406,6 @@ class TaskPainSystem(keras.Model):
         task_output = self.task_head(x)
         pain_output = self.pain_head(x)
         return {"task": task_output, "pain": pain_output}
-
 
     def compute_loss(self, data):
         x, y = data
