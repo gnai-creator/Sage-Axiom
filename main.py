@@ -1,3 +1,4 @@
+import re
 import os
 import time
 import json
@@ -46,6 +47,7 @@ submission_dict = defaultdict(list)
 
 log(
     f"[INFO] Iniciando processo por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos (~{SECONDS_PER_TASK:.1f}s por task) às {datetime.datetime.now()}.")
+
 
 
 def run_code(code: str, input_matrix: list) -> dict:

@@ -1,5 +1,6 @@
 # Qwen + SageAxiom ARC Solver Notebook
 
+import re
 from llama_cpp import Llama
 import json
 import os
@@ -33,10 +34,53 @@ Respond only with Python code. No explanations.
 """
 
 
+def extract_transform_function(code: str) -> str:
+    """Isola e retorna somente a função transform(grid) se for segura."""
+    match = re.search(
+        r"(def transform\(grid\):(.|\n)*?)(?=^def |\Z)", code, re.MULTILINE)
+    if not match:
+        print("[ERRO] Não foi possível encontrar a função transform.")
+        return None
+
+    func_code = match.group(1)
+
+    # Verifica por comandos perigosos ou baboseira fora da função
+    blacklist = ["input(", "open(", "os.", "subprocess",
+                 "eval(", "exec(", "print("]
+    for item in blacklist:
+        if item in code and item not in func_code:
+            print(
+                f"[ERRO] Código contém instrução insegura fora da função: {item}")
+            return None
+
+    return func_code
+
+
+def test_transform_code(code: str) -> bool:
+    """Executa a função extraída com um grid dummy e verifica se funciona."""
+    try:
+        scope = {}
+        exec(code, scope)
+        if "transform" not in scope:
+            print("[ERRO] 'transform' não foi definido.")
+            return False
+
+        dummy_grid = [[1, 2], [3, 4]]
+        result = scope["transform"](dummy_grid)
+
+        if not isinstance(result, list):
+            print("[ERRO] Resultado da função não é uma lista.")
+            return False
+
+        return True
+    except Exception as e:
+        print(f"[ERRO] Teste da função falhou: {e}")
+        return False
+
+
 def prompt_llm(task_input: list, prompt_template: str) -> str:
     prompt = prompt_template.format(grid=json.dumps(task_input))
 
-    # Verificação de tamanho
     if len(prompt.split()) > 500:
         print("[WARN] Prompt muito longo, pode estourar o contexto da LLM.")
 
@@ -49,12 +93,16 @@ def prompt_llm(task_input: list, prompt_template: str) -> str:
             ],
             temperature=0.3
         )
-        code = result['choices'][0]['message']['content']
-        if "def transform" not in code:
-            raise ValueError("Resposta do LLM não contém 'transform'.")
-        return code
+        full_code = result['choices'][0]['message']['content']
+        function_code = extract_transform_function(full_code)
+
+        if not function_code or not test_transform_code(function_code):
+            raise ValueError("Código extraído é inválido ou falhou no teste.")
+
+        return function_code
+
     except Exception as e:
-        print(f"[ERRO] Falha ao gerar código do LLM: {e}")
+        print(f"[ERRO] Falha ao gerar código válido do LLM: {e}")
         print(f"[ERRO] Prompt enviado (início):\n{prompt[:500]}...")
         return "def transform(grid): return grid"
 
