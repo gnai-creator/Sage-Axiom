@@ -1,19 +1,18 @@
-# main.py
-
-from sklearn.model_selection import train_test_split
+import os
+import time
+import json
+import datetime
+import traceback
 import numpy as np
 import tensorflow as tf
-import time
-import datetime
-import json
-import traceback
+
 from collections import defaultdict
+from sklearn.model_selection import train_test_split
 from core import SageAxiom
 import llm_driver
-import os
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-# === Execução dos tasks ===
 EPOCHS = 10
 TARGET_TASKS = 20
 EXPECTED_HOURS = 0.5
@@ -26,7 +25,7 @@ correct_tasks = 0
 submission_dict = defaultdict(list)
 
 print(
-    f"⏱️ Iniciando processo por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos (~{SECONDS_PER_TASK:.1f}s por task) as {datetime.datetime.now()}.")
+    f"⏱️ Iniciando processo por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos (~{SECONDS_PER_TASK:.1f}s por task) às {datetime.datetime.now()}.")
 
 
 def run_code(code: str, input_matrix: list) -> dict:
@@ -38,11 +37,7 @@ def run_code(code: str, input_matrix: list) -> dict:
         result = scope["transform"](input_matrix)
         return {"success": True, "output": result}
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(limit=1)
-        }
+        return {"success": False, "error": str(e), "traceback": traceback.format_exc(limit=1)}
 
 
 def compare_outputs(predicted, expected) -> bool:
@@ -76,38 +71,23 @@ if __name__ == "__main__":
     y_all = tf.stack(y_train_all)
 
     X_all_onehot = tf.one_hot(X_all, depth=10)
-    X_all_onehot = tf.expand_dims(X_all_onehot, axis=1)
-
-    y_all = tf.expand_dims(y_all, axis=1)
-
-    X_np = X_all_onehot.numpy()
-    y_np = y_all.numpy()
 
     X_train_final, X_val, y_train_final, y_val = train_test_split(
-        X_np, y_np, test_size=0.2, random_state=42)
+        X_all_onehot.numpy(), y_all.numpy(), test_size=0.2, random_state=42)
 
     X_train_final = tf.convert_to_tensor(X_train_final, dtype=tf.float32)
     X_val = tf.convert_to_tensor(X_val, dtype=tf.float32)
     y_train_final = tf.convert_to_tensor(y_train_final, dtype=tf.int32)
     y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
 
-    y_train_final = tf.squeeze(y_train_final, axis=1)
-    y_val = tf.squeeze(y_val, axis=1)
-
     model = SageAxiom(hidden_dim=128, use_hard_choice=False)
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        metrics=['accuracy']
-    )
+    model.compile(optimizer=tf.keras.optimizers.Adam(
+        learning_rate=0.001), loss=None, metrics=[])
+    dummy_input = tf.one_hot(tf.zeros((1, 30, 30), dtype=tf.int32), depth=10)
+    model(dummy_input)
 
-    model.build((None, 1, 30, 30, 10))
-    history = model.fit(
-        X_train_final, y_train_final,
-        validation_data=(X_val, y_val),
-        epochs=EPOCHS,
-        verbose=1
-    )
+    history = model.fit(X_train_final, y_train_final, validation_data=(
+        X_val, y_val), epochs=EPOCHS, verbose=1)
 
     print("Treinamento concluído. Histórico:", history.history)
 
@@ -134,21 +114,20 @@ if __name__ == "__main__":
             predicted = result["output"]
         else:
             print("\u274c Falha via Qwen → tentando SageAxiom")
-
             x = tf.convert_to_tensor(
                 [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))], dtype=tf.int32)
-            x = tf.expand_dims(x, axis=1)
-            x_onehot = tf.one_hot(x, depth=10)
+            x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
 
-            y_pred = model(x_onehot, training=False)
-            fallback_output = tf.argmax(y_pred[0], axis=-1).numpy().tolist()
+            y_pred = model(x_onehot[0], training=False)
+            fallback_output = tf.argmax(
+                y_pred["logits"], axis=-1).numpy().tolist()
 
             if compare_outputs(fallback_output, expected_output):
                 print("\u2705 Match via SageAxiom (fallback)")
                 success = True
                 predicted = fallback_output
             else:
-                print("\ud83d\uded1 Falha completa")
+                print("\ud83d\udea8 Falha completa")
 
         if success:
             for t in task["test"]:
@@ -163,11 +142,11 @@ if __name__ == "__main__":
                 else:
                     x_test = tf.convert_to_tensor(
                         [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))], dtype=tf.int32)
-                    x_test = tf.expand_dims(x_test, axis=1)
-                    x_onehot_test = tf.one_hot(x_test, depth=10)
-                    y_pred_test = model(x_onehot_test, training=False)
+                    x_onehot_test = tf.one_hot(
+                        x_test, depth=10, dtype=tf.float32)
+                    y_pred_test = model(x_onehot_test[0], training=False)
                     pred_test = tf.argmax(
-                        y_pred_test[0], axis=-1).numpy().tolist()
+                        y_pred_test["logits"], axis=-1).numpy().tolist()
                     submission_dict[task_id].append(pred_test)
 
             correct_tasks += 1
@@ -178,5 +157,5 @@ if __name__ == "__main__":
         json.dump(submission_dict, f)
 
     print(f"\n\ud83d\udce6 Submissão salva: submission.json")
-    print(f"\ud83c\udf1f Tasks processadas: {total_tasks}")
-    print(f"\u2705 Matches corretos: {correct_tasks}")
+    print(f"🌟 Tasks processadas: {total_tasks}")
+    print(f"✅ Matches corretos: {correct_tasks}")

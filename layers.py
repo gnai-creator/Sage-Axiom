@@ -4,12 +4,7 @@ from tensorflow.keras import layers
 from tensorflow import keras
 import tensorflow as tf
 import logging
-
-
-def compute_auxiliary_loss(output):
-    flipped = tf.image.flip_left_right(output)
-    symmetry_loss = tf.reduce_mean(tf.square(output - flipped))
-    return 0.01 * symmetry_loss
+from utils import compute_auxiliary_loss
 
 
 class TokenEmbedding(tf.keras.layers.Layer):
@@ -18,13 +13,32 @@ class TokenEmbedding(tf.keras.layers.Layer):
         self.vocab_size = vocab_size
         self.dim = dim
         self.embed_layer = tf.keras.layers.Embedding(
-            input_dim=vocab_size, output_dim=dim)
+            input_dim=vocab_size, output_dim=dim
+        )
 
     def call(self, x):
-        # x: [..., 10] → argmax → [...], embedding → [..., dim]
-        if x.shape.rank == 4 and x.shape[-1] == self.vocab_size:
-            x = tf.argmax(x, axis=-1)
-        return self.embed_layer(x)
+        if x.shape.rank != 4:
+            raise ValueError(
+                f"TokenEmbedding espera input 4D [B, H, W, C]. Recebido: {x.shape}")
+
+        is_onehot = tf.equal(tf.shape(x)[-1], self.vocab_size)
+        x = tf.cond(
+            is_onehot,
+            lambda: tf.argmax(x, axis=-1, output_type=tf.int32),
+            lambda: tf.cast(x, tf.int32)
+        )
+
+        input_shape = tf.shape(x)
+        batch = input_shape[0]
+        H = input_shape[1]
+        W = input_shape[2]
+
+        flat_x = tf.reshape(x, [-1])
+        flat_emb = self.embed_layer(flat_x)
+
+        output = tf.reshape(flat_emb, [batch, H, W, self.dim])
+        output.set_shape([None, None, None, self.dim])
+        return output
 
 
 class OutputRefinement(tf.keras.layers.Layer):
@@ -121,7 +135,6 @@ class BoundingBoxDiscipline(tf.keras.layers.Layer):
     def __init__(self, penalty_weight=0.05):
         super().__init__()
         self.penalty_weight = tf.Variable(0.05, trainable=True)
-
 
     def call(self, prediction_probs, expected_onehot):
         # Use classe dominante como máscara
@@ -249,36 +262,29 @@ class LearnedRotation(tf.keras.layers.Layer):
             lambda x: tf.image.rot90(x, k=2),
             lambda x: tf.image.rot90(x, k=3),
         ]
-        self.selector = None
+        # A camada Dense é criada aqui, mas o build garante que o input shape esteja certo
+        self.selector_layer = tf.keras.layers.Dense(
+            4, activation='softmax', name="rotation_selector"
+        )
 
     def build(self, input_shape):
-        channels = input_shape[-1]
-        if channels is None:
+        if input_shape[-1] is None:
             raise ValueError(
                 "`LearnedRotation` precisa de canais definidos em tempo de compilação. "
                 f"Recebido: {input_shape}"
             )
-
-        self.selector = tf.keras.layers.Dense(
-            4,
-            activation='softmax',
-            name="rotation_selector"
-        )
-        # Construir explicitamente
-        self.selector.build((None, channels))
+        # Força a construção do selector_layer com input_shape explícito
+        self.selector_layer.build((input_shape[0], input_shape[-1]))
         super().build(input_shape)
 
     def call(self, x):
-        if not self.built:
-            self.build(x.shape)
-
         b = tf.shape(x)[0]
         pooled = tf.reduce_mean(x, axis=[1, 2])  # [batch, channels]
-        weights = self.selector(pooled)  # [batch, 4]
+        weights = self.selector_layer(pooled)  # [batch, 4]
         weights = tf.reshape(weights, [b, 4, 1, 1, 1])
 
         rotated = [rot(x) for rot in self.rotations]
-        stacked = tf.stack(rotated, axis=1)
+        stacked = tf.stack(rotated, axis=1)  # [batch, 4, h, w, c]
         out = tf.reduce_sum(stacked * weights, axis=1)
         return out
 
