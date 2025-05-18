@@ -72,15 +72,17 @@ class SageAxiom(tf.keras.Model):
         x, y = data
 
         with tf.GradientTape() as tape:
-            outputs = self(x, training=True)
-            main_loss = self.compiled_loss(y, outputs)
-            aux_loss = tf.add_n(self.losses)  # <-- isso é essencial
-            total_loss = main_loss + aux_loss
+            outputs = self(x, y, training=True)
+            total_loss = outputs["loss"]
 
         grads = tape.gradient(total_loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.trainable_variables))
         return {"loss": total_loss}
 
+    def test_step(self, data):
+        x, y = data
+        outputs = self(x, y, training=False)
+        return {"loss": outputs["loss"]}
 
     def build(self, input_shape):
         super().build(input_shape)
@@ -98,8 +100,6 @@ class SageAxiom(tf.keras.Model):
 
         state = tf.zeros([batch, self.hidden_dim])
         self.memory.reset()
-
-        logits_list = []
 
         for t in range(T):
             xt = x_seq[:, t]  # [batch, H, W, 10]
@@ -122,8 +122,7 @@ class SageAxiom(tf.keras.Model):
         long_term_context = tf.reshape(
             long_term_context, [batch, self.hidden_dim])
         full_context = tf.concat(
-            [state, memory_context, long_term_context], axis=-1
-        )
+            [state, memory_context, long_term_context], axis=-1)
 
         full_context.set_shape([None, self.hidden_dim * 3])
 
@@ -158,66 +157,57 @@ class SageAxiom(tf.keras.Model):
         w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
         final_logits = w * refined_logits + (1.0 - w) * conservative_logits
 
-        logits_list.append(final_logits)
+        if y_seq is None:
+            return {"logits": final_logits}
 
-        if y_seq is not None:
-            expected_broadcast = tf.one_hot(
-                y_seq[:, -1], depth=10, dtype=tf.float32)
-            pixelwise_diff = tf.square(expected_broadcast - final_logits)
-            spatial_penalty = tf.reduce_mean(tf.nn.relu(
-                tf.reduce_sum(final_logits, axis=-1) - 1.0))
+        y_last = y_seq[:, -1] if y_seq.shape.rank == 4 else y_seq
+        expected_broadcast = tf.one_hot(
+            tf.cast(y_last, tf.int32), depth=10, dtype=tf.float32)
 
-            adjusted_pain, gate, exploration, alpha = self.pain_system(
-                final_logits, expected_broadcast, blended=blended, training=training
-            )
+        adjusted_pain, gate, exploration, alpha = self.pain_system(
+            final_logits, expected_broadcast, blended=blended, training=training
+        )
 
-            # Logging interno
-            # if training:
-            #     tf.print("📉 Loss breakdown → adjusted_pain:", adjusted_pain,
-            #              "gate:", gate, "exploration:", exploration, "alpha:", alpha)
+        pixelwise_diff = tf.square(expected_broadcast - final_logits)
+        spatial_penalty = tf.reduce_mean(tf.nn.relu(
+            tf.reduce_sum(final_logits, axis=-1) - 1.0))
 
-            base_loss = tf.reduce_mean(pixelwise_diff)
-            sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
-            trait_loss = tf.clip_by_value(self.pain_system.compute_trait_loss(
-                final_logits, expected_broadcast, adjusted_pain), 0.0, 1.0)
-            regional_penalty = 0.01 * spatial_penalty
+        base_loss = tf.reduce_mean(pixelwise_diff)
+        sym_loss = compute_auxiliary_loss(tf.nn.softmax(final_logits))
+        trait_loss = tf.clip_by_value(self.pain_system.compute_trait_loss(
+            final_logits, expected_broadcast, adjusted_pain), 0.0, 1.0)
+        regional_penalty = 0.01 * spatial_penalty
 
-            probs = tf.nn.softmax(final_logits / 1.5)
-            bbox_loss = self.bbox_penalty(probs, expected_broadcast)
-            decay_mask = spatial_decay_mask(tf.shape(final_logits))
-            spread_penalty = tf.reduce_mean(probs * decay_mask) * 0.005
-            repeat_penalty_val = repetition_penalty(final_logits) * 0.001
-            reverse_penalty_val = reverse_penalty(
-                final_logits, expected_broadcast) * 0.001
-            edge_penalty_val = edge_alignment_penalty(probs) * 0.001
-            cont_loss_val = continuity_loss(final_logits) * 0.001
+        probs = tf.nn.softmax(final_logits / 1.5)
+        bbox_loss = self.bbox_penalty(probs, expected_broadcast)
+        decay_mask = spatial_decay_mask(tf.shape(final_logits))
+        spread_penalty = tf.reduce_mean(probs * decay_mask) * 0.005
+        repeat_penalty_val = repetition_penalty(final_logits) * 0.001
+        reverse_penalty_val = reverse_penalty(
+            final_logits, expected_broadcast) * 0.001
+        edge_penalty_val = edge_alignment_penalty(probs) * 0.001
+        cont_loss_val = continuity_loss(final_logits) * 0.001
 
-            pred_mask = tf.cast(tf.stop_gradient(
-                tf.reduce_max(probs, axis=-1) > 0.5), tf.float32)
-            true_mask = tf.cast(tf.reduce_max(
-                expected_broadcast, axis=-1) > 0.5, tf.float32)
-            shape_loss = bounding_shape_penalty(pred_mask, true_mask) * 0.025
+        pred_mask = tf.cast(tf.stop_gradient(
+            tf.reduce_max(probs, axis=-1) > 0.5), tf.float32)
+        true_mask = tf.cast(tf.reduce_max(
+            expected_broadcast, axis=-1) > 0.5, tf.float32)
+        shape_loss = bounding_shape_penalty(pred_mask, true_mask) * 0.025
 
-            # Agora incorporamos os ingredientes esquecidos
-            total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + \
-                spread_penalty + repeat_penalty_val + reverse_penalty_val + \
-                edge_penalty_val + cont_loss_val + shape_loss + \
-                0.05 * adjusted_pain  # ⬅️ peso arbitrário razoável
+        total_loss = base_loss + sym_loss + trait_loss + regional_penalty + bbox_loss + \
+            spread_penalty + repeat_penalty_val + reverse_penalty_val + \
+            edge_penalty_val + cont_loss_val + shape_loss + 0.05 * adjusted_pain
 
-            # Se alpha for escalar útil, adiciona
-            if alpha is not None and isinstance(alpha, tf.Tensor):
-                total_loss += 0.01 * tf.reduce_mean(alpha)
+        if alpha is not None and isinstance(alpha, tf.Tensor):
+            total_loss += 0.01 * tf.reduce_mean(alpha)
 
-            if training:
-                logits_seq = tf.stack(logits_list, axis=1)
-                total_loss += 0.01 * temporal_symmetry_loss(logits_seq)
+        if training:
+            logits_seq = tf.expand_dims(final_logits, axis=1)
+            total_loss += 0.01 * temporal_symmetry_loss(logits_seq)
 
-            self.loss_tracker.update_state(total_loss)
+        self.add_loss(total_loss)
 
-            return {"logits": final_logits, "loss": total_loss}
-
-        # Se não tiver y_seq (ex: em inferência), só retorna os logits
-        return {"logits": final_logits}
+        return {"logits": final_logits, "loss": total_loss}
 
     @property
     def metrics(self):
