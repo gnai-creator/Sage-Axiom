@@ -200,7 +200,7 @@ class SageAxiom(tf.keras.Model):
 
         self.add_loss(total_loss)
 
-        tf.print("base_loss", base_loss)
+        tf.print("\nbase_loss", base_loss)
         tf.print("sym_loss", sym_loss)
         tf.print("regional_penalty", regional_penalty)
         tf.print("bbox_loss", bbox_loss)
