@@ -33,12 +33,10 @@ Respond only with Python code. No explanations.
 
 
 def hash_task_input(grid: list) -> str:
-    """Gera hash curto do input grid para rastrear problemas."""
     return hashlib.md5(json.dumps(grid).encode()).hexdigest()[:8]
 
 
 def extract_transform_function(code: str) -> str | None:
-    """Extrai a função transform(grid) de maneira segura."""
     match = re.search(
         r"(def transform\(grid\):(?:\n|.)*?)(?=^def |\Z)", code, re.MULTILINE)
     if not match:
@@ -61,15 +59,12 @@ def extract_transform_function(code: str) -> str | None:
 
 
 def looks_hardcoded(code: str, task_input: list) -> bool:
-    """Detecta se o código está hardcoded com base no input."""
     grid_flat = [str(n) for row in task_input for n in row]
     sample = "".join(grid_flat[:6])
-    code_clean = code.replace("\n", "").replace(" ", "")
-    return sample in code_clean
+    return sample in code.replace("\n", "").replace(" ", "")
 
 
 def test_transform_code(code: str) -> bool:
-    """Executa a função com um grid fictício para validar."""
     try:
         scope = {}
         exec(code, scope)
@@ -77,15 +72,14 @@ def test_transform_code(code: str) -> bool:
             print("[ERRO] Função 'transform' não está definida.")
             return False
 
-        dummy_result = scope["transform"]([[1, 2], [3, 4]])
-        return isinstance(dummy_result, list)
+        result = scope["transform"]([[1, 2], [3, 4]])
+        return isinstance(result, list)
     except Exception as e:
         print(f"[ERRO] Teste falhou: {e}")
         return False
 
 
 def save_bad_code(code: str, reason: str, grid: list):
-    """Salva código rejeitado junto com a razão e hash."""
     with open(".bad_llm.txt", "a", encoding="utf-8") as f:
         f.write("\n" + "=" * 60 + "\n")
         f.write(f"# Motivo: {reason}\n")
@@ -93,19 +87,23 @@ def save_bad_code(code: str, reason: str, grid: list):
         f.write(code.strip() + "\n")
 
 
-def prompt_llm(task_input: list, prompt_template: str, feedback: str = None) -> str:
+def prompt_llm(task_input: list, prompt_template: str, feedback: str = None, history: list = None) -> str:
     prompt = prompt_template.format(grid=json.dumps(task_input))
-    if feedback:
-        prompt += f"\n\nThe previous attempt failed. Here is some feedback:\n{feedback}\nTry again."
+    if history:
+        prompt += "\n\n# Histórico de Tentativas e Resultados:\n"
+        for h in history[-3:]:
+            prompt += f"\nTentativa #{h['attempt']}:\nCódigo gerado:\n{h['code']}\nResultado: {h['result']}\n"
 
-    if len(prompt.split()) > 500:
-        print("[WARN] Prompt pode estar excedendo o limite de contexto.")
+    if feedback:
+        prompt += f"\n\n# Feedback mais recente do SageAxiom:\n{feedback}\n"
+
+    prompt += "\n# Gere uma nova função transform(grid) com base nas tentativas acima."
 
     try:
         result = llm.create_chat_completion(
             messages=[
                 {"role": "system",
-                    "content": "You are a Python expert solving ARC grid puzzles."},
+                    "content": "Você é um solucionador de puzzles visuais do ARC."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.6
@@ -119,7 +117,7 @@ def prompt_llm(task_input: list, prompt_template: str, feedback: str = None) -> 
 
         if looks_hardcoded(function_code, task_input):
             save_bad_code(
-                function_code, "Hardcoded output detectado", task_input)
+                function_code, "Código hardcoded detectado", task_input)
             raise ValueError("Código parece hardcoded.")
 
         if not test_transform_code(function_code):
@@ -130,8 +128,21 @@ def prompt_llm(task_input: list, prompt_template: str, feedback: str = None) -> 
         return function_code
 
     except Exception as e:
-        print(f"[ERRO] Falha no prompt para LLM: {e}")
+        print(f"[ERRO] Falha ao gerar código válido do LLM: {e}")
+        print(f"[ERRO] Prompt enviado (início):\n{prompt[:500]}...")
         return "def transform(grid): return grid"
 
 
-print("Qwen + SageAxiom driver inicializado com sanidade mínima.")
+def prompt_beam_llm(task_input: list, prompt_template: str, beam_width: int = 3, feedback: str = None):
+    candidates = []
+    for _ in range(beam_width):
+        try:
+            code = prompt_llm(task_input, prompt_template, feedback=feedback)
+            if code:
+                candidates.append(code)
+        except Exception:
+            continue
+    return candidates
+
+
+print("Qwen + SageAxiom driver inicializado com modo beam search disponível.")

@@ -95,14 +95,15 @@ class LongTermMemory(tf.keras.layers.Layer):
     def recall(self, index):
         return tf.expand_dims(tf.gather(self.memory, index), axis=0)
 
+
     def match_context(self, context):
         context = tf.reshape(
             context, [tf.shape(context)[0], 1, self.embedding_dim])
-        memory = tf.reshape(
-            self.memory, [1, self.memory_size, self.embedding_dim])
+        memory = tf.reshape(self.memory, [1, self.memory_size, self.embedding_dim])
         sim = tf.keras.losses.cosine_similarity(context, memory, axis=-1)
         best = tf.argmin(sim, axis=-1)
-        return self.recall(best)
+        return tf.gather(self.memory, best)  # retorna [batch, embedding_dim]
+
 
 
 class PositionalEncoding2D(tf.keras.layers.Layer):
@@ -304,10 +305,10 @@ class TaskPainSystem(tf.keras.Model):
         # Shared encoder (like a brainstem, if you want to be poetic about it)
         self.encoder = tf.keras.Sequential([
             tf.keras.layers.Conv2D(32, kernel_size=3,
-                          activation='relu', padding='same'),
+                                   activation='relu', padding='same'),
             tf.keras.layers.MaxPooling2D(pool_size=2),
             tf.keras.layers.Conv2D(64, kernel_size=3,
-                          activation='relu', padding='same'),
+                                   activation='relu', padding='same'),
             tf.keras.layers.MaxPooling2D(pool_size=2),
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(latent_dim, activation='relu')
@@ -389,3 +390,37 @@ class EnhancedEncoder(tf.keras.layers.Layer):
         x = self.blocks[3](x, training=training)
         x = self.blocks[4](x)
         return x
+
+
+class TaskEncoder(tf.keras.layers.Layer):
+    def __init__(self, hidden_dim):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.input_proj = tf.keras.layers.Conv2D(
+            hidden_dim, 3, padding='same', activation='relu')
+        self.output_proj = tf.keras.layers.Conv2D(
+            hidden_dim, 3, padding='same', activation='relu')
+        self.combined_proj = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(
+                hidden_dim, 3, padding='same', activation='relu'),
+            tf.keras.layers.Conv2D(
+                hidden_dim, 3, padding='same', activation='relu'),
+            tf.keras.layers.GlobalAveragePooling2D(),
+            tf.keras.layers.Dense(
+                hidden_dim, activation='tanh')  # final z_task
+        ])
+
+    def call(self, x_in, x_out):
+        """
+        Recebe dois tensores [B, H, W, 10] (one-hot input/output) e retorna z_task [B, hidden_dim]
+        """
+        if x_in.shape != x_out.shape:
+            raise ValueError("Shape mismatch entre input e output")
+
+        x_concat = tf.concat([
+            self.input_proj(x_in),
+            self.output_proj(x_out)
+        ], axis=-1)
+
+        z = self.combined_proj(x_concat)
+        return z  # shape [B, hidden_dim]
