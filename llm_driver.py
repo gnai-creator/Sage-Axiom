@@ -3,15 +3,13 @@ import json
 import os
 import hashlib
 from llama_cpp import Llama
-from collections import defaultdict
-import tensorflow as tf
 
-# === Inicialização do Qwen ===
+# === Inicialização do modelo Qwen ===
+
 model_path = os.path.expanduser("qwen2.5-1.5b-instruct-q4_k_m.gguf")
 if not os.path.exists(model_path):
     model_path = os.path.expanduser("./qwen2.5-1.5b-instruct-q4_k_m.gguf")
-    print(
-        f"[ERRO] Modelo GGUF não encontrado em {model_path}. Verifique o caminho.")
+    print(f"Modelo GGUF não encontrado em {model_path}.")
 assert os.path.exists(model_path), "Modelo GGUF não encontrado."
 
 llm = Llama(
@@ -35,68 +33,59 @@ Respond only with Python code. No explanations.
 
 
 def hash_task_input(grid: list) -> str:
-    """Gera hash curto para o conteúdo do input grid."""
+    """Gera hash curto do input grid para rastrear problemas."""
     return hashlib.md5(json.dumps(grid).encode()).hexdigest()[:8]
 
 
 def extract_transform_function(code: str) -> str | None:
-    """Isola e retorna somente a função transform(grid) se for segura."""
+    """Extrai a função transform(grid) de maneira segura."""
     match = re.search(
-        r"(def transform\(grid\):(?:\n|.)*?)(?=^def |\Z)", code, re.MULTILINE
-    )
+        r"(def transform\(grid\):(?:\n|.)*?)(?=^def |\Z)", code, re.MULTILINE)
     if not match:
-        print("[ERRO] Não foi possível encontrar a função transform.")
+        print("[ERRO] Função transform(grid) não encontrada.")
         return None
 
     func_code = match.group(1)
-
     blacklist = ["input(", "open(", "os.", "subprocess",
                  "eval(", "exec(", "import ", "print("]
     for item in blacklist:
         if item in code and item not in func_code:
-            print(
-                f"[ERRO] Código contém instrução insegura fora da função: {item}")
+            print(f"[ERRO] Código inseguro detectado: {item}")
             return None
 
     if "grid" not in func_code:
-        print("[ERRO] Código não utiliza o argumento `grid`.")
+        print("[ERRO] Código não usa o argumento 'grid'.")
         return None
 
     return func_code
 
 
 def looks_hardcoded(code: str, task_input: list) -> bool:
-    """Verifica se a saída está hardcoded no corpo da função."""
+    """Detecta se o código está hardcoded com base no input."""
     grid_flat = [str(n) for row in task_input for n in row]
-    sample = grid_flat[:6]
-    snippet = "".join(sample)
-    return snippet in code.replace("\n", "").replace(" ", "")
+    sample = "".join(grid_flat[:6])
+    code_clean = code.replace("\n", "").replace(" ", "")
+    return sample in code_clean
 
 
 def test_transform_code(code: str) -> bool:
-    """Executa a função extraída com um grid dummy e verifica se funciona."""
+    """Executa a função com um grid fictício para validar."""
     try:
         scope = {}
         exec(code, scope)
         if "transform" not in scope:
-            print("[ERRO] 'transform' não foi definido.")
+            print("[ERRO] Função 'transform' não está definida.")
             return False
 
-        dummy_grid = [[1, 2], [3, 4]]
-        result = scope["transform"](dummy_grid)
-
-        if not isinstance(result, list):
-            print("[ERRO] Resultado da função não é uma lista.")
-            return False
-
-        return True
+        dummy_result = scope["transform"]([[1, 2], [3, 4]])
+        return isinstance(dummy_result, list)
     except Exception as e:
-        print(f"[ERRO] Teste da função falhou: {e}")
+        print(f"[ERRO] Teste falhou: {e}")
         return False
 
 
 def save_bad_code(code: str, reason: str, grid: list):
-    """Salva código defeituoso com contexto e razão."""
+    """Salva código rejeitado junto com a razão e hash."""
     with open(".bad_llm.txt", "a", encoding="utf-8") as f:
         f.write("\n" + "=" * 60 + "\n")
         f.write(f"# Motivo: {reason}\n")
@@ -107,16 +96,16 @@ def save_bad_code(code: str, reason: str, grid: list):
 def prompt_llm(task_input: list, prompt_template: str, feedback: str = None) -> str:
     prompt = prompt_template.format(grid=json.dumps(task_input))
     if feedback:
-        prompt += f"\n\nA tentativa anterior falhou. Aqui está um feedback:\n{feedback}\nTente novamente."
+        prompt += f"\n\nThe previous attempt failed. Here is some feedback:\n{feedback}\nTry again."
 
     if len(prompt.split()) > 500:
-        print("[WARN] Prompt muito longo, pode estourar o contexto da LLM.")
+        print("[WARN] Prompt pode estar excedendo o limite de contexto.")
 
     try:
         result = llm.create_chat_completion(
             messages=[
                 {"role": "system",
-                    "content": "Você é um solucionador de puzzles visuais do ARC."},
+                    "content": "You are a Python expert solving ARC grid puzzles."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.6
@@ -129,9 +118,8 @@ def prompt_llm(task_input: list, prompt_template: str, feedback: str = None) -> 
             raise ValueError("Código extraído inválido.")
 
         if looks_hardcoded(function_code, task_input):
-            print("[ERRO] Código suspeito de estar hardcoded com base no input.")
             save_bad_code(
-                function_code, "Código hardcoded detectado", task_input)
+                function_code, "Hardcoded output detectado", task_input)
             raise ValueError("Código parece hardcoded.")
 
         if not test_transform_code(function_code):
@@ -142,8 +130,7 @@ def prompt_llm(task_input: list, prompt_template: str, feedback: str = None) -> 
         return function_code
 
     except Exception as e:
-        print(f"[ERRO] Falha ao gerar código válido do LLM: {e}")
-        print(f"[ERRO] Prompt enviado (início):\n{prompt[:500]}...")
+        print(f"[ERRO] Falha no prompt para LLM: {e}")
         return "def transform(grid): return grid"
 
 

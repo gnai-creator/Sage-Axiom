@@ -11,11 +11,11 @@ import logging
 
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix, precision_score, recall_score, classification_report
+from sklearn.metrics import confusion_matrix, classification_report
 from core import SageAxiom
 import llm_driver
 
-# === Logging Setup ===
+# === Logging ===
 log_filename = f"log_arc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 logging.basicConfig(
     filename=log_filename,
@@ -31,6 +31,31 @@ def log(msg):
     logging.info(msg)
 
 
+def pad_to_shape(tensor, target_shape=(30, 30)):
+    pad_height = target_shape[0] - tf.shape(tensor)[0]
+    pad_width = target_shape[1] - tf.shape(tensor)[1]
+    return tf.pad(tensor, paddings=[[0, pad_height], [0, pad_width]], constant_values=0)
+
+
+def run_code(code: str, input_matrix: list) -> dict:
+    scope = {}
+    try:
+        exec(code, scope)
+        if "transform" not in scope:
+            raise ValueError("Código não define 'transform'")
+        result = scope["transform"](input_matrix)
+        return {"success": True, "output": result}
+    except Exception as e:
+        return {"success": False, "error": str(e), "traceback": traceback.format_exc(limit=1)}
+
+
+def compare_outputs(predicted, expected) -> bool:
+    try:
+        return np.array_equal(np.array(predicted), np.array(expected))
+    except Exception:
+        return False
+
+
 def plot_history(history):
     plt.figure(figsize=(10, 5))
     for key in history.history:
@@ -43,12 +68,6 @@ def plot_history(history):
     plt.tight_layout()
     plt.savefig("training_plot.png")
     log("[INFO] Plot do treinamento salvo: training_plot.png")
-
-
-def profile_time(start, label):
-    elapsed = time.time() - start
-    mins, secs = divmod(elapsed, 60)
-    log(f"[PERF] {label}: {int(mins)}m {int(secs)}s ({elapsed:.2f} segundos)")
 
 
 def plot_confusion(y_true, y_pred):
@@ -72,51 +91,27 @@ def plot_confusion(y_true, y_pred):
     log("[INFO] Relatório de métricas por classe salvo: per_class_metrics.json")
 
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
-# === Hyperparâmetros ===
-EPOCHS = 40
-TARGET_TASKS = 21
-EXPECTED_HOURS = 1
-TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
-SECONDS_PER_TASK = (TIME_LIMIT_MINUTES * 60) / TARGET_TASKS
-
-start_time = time.time()
-total_tasks = 0
-correct_tasks = 0
-submission_dict = defaultdict(list)
+def profile_time(start, label):
+    elapsed = time.time() - start
+    mins, secs = divmod(elapsed, 60)
+    log(f"[PERF] {label}: {int(mins)}m {int(secs)}s ({elapsed:.2f} segundos)")
+    return elapsed
 
 
-def run_code(code: str, input_matrix: list) -> dict:
-    scope = {}
-    try:
-        exec(code, scope)
-        if "transform" not in scope:
-            raise ValueError("Código não define 'transform'")
-        result = scope["transform"](input_matrix)
-        return {"success": True, "output": result}
-    except Exception as e:
-        return {"success": False, "error": str(e), "traceback": traceback.format_exc(limit=1)}
-
-
-def compare_outputs(predicted, expected) -> bool:
-    try:
-        return np.array_equal(np.array(predicted), np.array(expected))
-    except Exception:
-        return False
-
-
-def pad_to_shape(tensor, target_shape=(30, 30)):
-    pad_height = target_shape[0] - tf.shape(tensor)[0]
-    pad_width = target_shape[1] - tf.shape(tensor)[1]
-    return tf.pad(tensor, paddings=[[0, pad_height], [0, pad_width]], constant_values=0)
-
-
+# === Execução ===
 if __name__ == "__main__":
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    EPOCHS = 40
+    TARGET_TASKS = 21
+    EXPECTED_HOURS = 1
+    TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
+    SECONDS_PER_TASK = (TIME_LIMIT_MINUTES * 60) / TARGET_TASKS
+
     with open("arc-agi_test_challenges.json") as f:
         tasks = json.load(f)
 
-    log("[INFO] Preparando dados para treinamento do SageAxiom...")
+    # === Treinamento ===
+    log("[INFO] Carregando dados do ARC para treinamento do SageAxiom...")
     X_train_all, y_train_all = [], []
     for task in tasks.values():
         for pair in task["train"]:
@@ -129,62 +124,45 @@ if __name__ == "__main__":
 
     X_all = tf.stack(X_train_all)
     y_all = tf.stack(y_train_all)
-
     X_all_onehot = tf.one_hot(X_all, depth=10)
 
     X_train_final, X_val, y_train_final, y_val = train_test_split(
         X_all_onehot.numpy(), y_all.numpy(), test_size=0.2, random_state=42
     )
 
-    X_train_final = tf.convert_to_tensor(X_train_final, dtype=tf.float32)
-    X_val = tf.convert_to_tensor(X_val, dtype=tf.float32)
-    y_train_final = tf.convert_to_tensor(y_train_final, dtype=tf.int32)
-    y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
-
-    log("[INFO] Compilando modelo SageAxiom...")
     model = SageAxiom(hidden_dim=128, use_hard_choice=False)
     model.compile(optimizer=tf.keras.optimizers.Adam(
         learning_rate=0.001), loss=None, metrics=[])
     model(X_train_final[:1])
 
-    log("[INFO] Iniciando treinamento...")
     training_start = time.time()
     history = model.fit(X_train_final, y_train_final, validation_data=(
         X_val, y_val), epochs=EPOCHS, verbose=1)
-    profile_time(training_start, "Tempo de treinamento")
-
-    log("[INFO] Treinamento concluído.")
-    for k, v in history.history.items():
-        log(f"  {k}: {[round(float(f), 4) for f in v]}")
+    training_time = profile_time(training_start, "Tempo de treinamento")
 
     plot_history(history)
-    plot_confusion(y_val.numpy(), tf.argmax(
-        model(X_val, training=False)["logits"], axis=-1).numpy())
+    y_val_pred = tf.argmax(model(X_val, training=False)
+                           ["logits"], axis=-1).numpy()
+    plot_confusion(y_val.numpy(), y_val_pred)
 
-    # === Avaliação das tarefas ===
-    log("[INFO] Começando avaliação de tarefas...")
-    task_iter = iter(tasks.items())
+    # === Avaliação por task ===
+    submission_dict = defaultdict(list)
+    correct_tasks = 0
+    total_tasks = 0
+    task_times = {}
 
-    while (time.time() - start_time) < TIME_LIMIT_MINUTES * 60 and total_tasks < TARGET_TASKS:
-        try:
-            task_id, task = next(task_iter)
-        except StopIteration:
-            break
-
+    evaluation_start = time.time()
+    for task_id, task in list(tasks.items())[:TARGET_TASKS]:
+        task_start = time.time()
         input_grid = task["train"][0]["input"]
         expected_output = task["train"][0]["output"]
+        log(f"[INFO] Task {task_id} ({total_tasks+1}/{TARGET_TASKS})")
 
-        log(f"[INFO] Task ID: {task_id} ({total_tasks + 1}/{TARGET_TASKS})")
-
-        task_start_time = time.time()
-        task_timeout = SECONDS_PER_TASK
         predicted = None
         success = False
         feedback = None
         attempt = 0
-
-        while (time.time() - task_start_time) < task_timeout and not success:
-            log(f"[INFO] Tentativa #{attempt + 1} com Qwen...")
+        while (time.time() - task_start) < SECONDS_PER_TASK and not success:
             code = llm_driver.prompt_llm(
                 input_grid, llm_driver.prompt_template, feedback=feedback)
             result = run_code(code, input_grid)
@@ -195,74 +173,63 @@ if __name__ == "__main__":
                 success = True
                 break
             else:
-                log("[INFO] Qwen falhou. Chamando SageAxiom para feedback...")
                 x = tf.convert_to_tensor(
-                    [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))], dtype=tf.int32)
+                    [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
                 x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
                 y_pred = model(x_onehot, training=False)
                 fallback_output = tf.argmax(
                     y_pred["logits"][0], axis=-1).numpy().tolist()
-
                 if compare_outputs(fallback_output, expected_output):
                     log("[INFO] SageAxiom acertou (fallback).")
                     predicted = fallback_output
                     success = True
                     break
                 else:
-                    feedback = f"SageAxiom sugeriu a seguinte transformação: {fallback_output}"
-                    log(
-                        f"[INFO] Feedback gerado para nova tentativa com Qwen: {feedback}")
-
+                    feedback = f"SageAxiom sugeriu: {fallback_output}"
             attempt += 1
 
         if success:
             correct_tasks += 1
-            log("[INFO] Processando testes para task correta...")
             for t in task["test"]:
                 test_input = t["input"]
                 try:
-                    code_test = llm_driver.prompt_llm(
+                    test_code = llm_driver.prompt_llm(
                         test_input, llm_driver.prompt_template)
-                    result_test = run_code(code_test, test_input)
-                    if result_test["success"]:
-                        submission_dict[task_id].append(result_test["output"])
+                    test_result = run_code(test_code, test_input)
+                    if test_result["success"]:
+                        submission_dict[task_id].append(test_result["output"])
                         continue
-                except Exception as e:
-                    log(f"[WARN] Qwen falhou no teste: {e}")
-
+                except:
+                    pass
                 x_test = tf.convert_to_tensor(
-                    [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))], dtype=tf.int32)
-                x_onehot_test = tf.one_hot(
-                    x_test, depth=10, dtype=tf.float32)
+                    [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))])
+                x_onehot_test = tf.one_hot(x_test, depth=10, dtype=tf.float32)
                 y_pred_test = model(x_onehot_test, training=False)
                 pred_test = tf.argmax(
                     y_pred_test["logits"][0], axis=-1).numpy().tolist()
                 submission_dict[task_id].append(pred_test)
         else:
-            log("[INFO] Task falhou completamente. Tristeza profunda.")
+            log("[WARN] Nenhuma solução correta para esta task.")
 
+        task_elapsed = profile_time(task_start, f"Tarefa {task_id}")
+        task_times[task_id] = task_elapsed
         total_tasks += 1
 
-    # === Finalização ===
-    log("[INFO] Salvando resultados...")
+    evaluation_time = profile_time(
+        evaluation_start, "Tempo de avaliação total")
+
+    # === Resultados ===
     with open("submission.json", "w", encoding="utf-8") as f:
         json.dump(submission_dict, f, ensure_ascii=False)
 
-    log("[INFO] Submissão salva: submission.json")
-    log(f"[INFO] Tasks processadas: {total_tasks}")
-    log(f"[INFO] Matches corretos: {correct_tasks}")
+    with open("per_task_times.json", "w", encoding="utf-8") as f:
+        json.dump(task_times, f, indent=2)
 
-    if total_tasks > 0:
-        estimated_score = correct_tasks / total_tasks * 100
-        log(
-            f"[INFO] Estimativa de score (em {total_tasks} tarefas): {estimated_score:.2f}%")
-
-        final_score = (correct_tasks / 250) * 100
-        log(
-            f"[INFO] Projeção final aproximada com base nas 250 tasks do ARC: {final_score:.2f}%")
-
-    total_time = time.time() - start_time
-    mins, secs = divmod(total_time, 60)
-    log(f"[INFO] Tempo total de execução: {int(mins)}m {int(secs)}s ({total_time:.2f} segundos)")
-    log("[INFO] Processo encerrado.")
-    print(f"Logs salvos em: {log_filename}")
+    log(f"[INFO] Matches corretos: {correct_tasks}/{total_tasks}")
+    score = (correct_tasks / total_tasks) * 100
+    projection = (correct_tasks / 250) * 100
+    log(f"[INFO] Score estimado: {score:.2f}%")
+    log(
+        f"[INFO] Projeção final aproximada (base 250 tasks): {projection:.2f}%")
+    log("[INFO] Pipeline finalizado.")
+    log(f"[INFO] Log completo salvo em: {log_filename}")
