@@ -1,15 +1,9 @@
 import tensorflow as tf
 from layers import *
 from utils import (
-    bounding_shape_penalty,
-    continuity_loss,
     temporal_symmetry_loss,
-    spatial_decay_mask,
-    repetition_penalty,
-    reverse_penalty,
-    edge_alignment_penalty,
-    compute_auxiliary_loss,
-    compute_all_losses
+    compute_all_losses,
+    BoundingBoxDiscipline
 )
 
 

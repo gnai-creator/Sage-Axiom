@@ -1,10 +1,8 @@
 # layers.py
 
-from tensorflow.keras import layers
-from tensorflow import keras
+import tensorflow.keras as layers
 import tensorflow as tf
 import logging
-from utils import compute_auxiliary_loss
 
 
 class TokenEmbedding(tf.keras.layers.Layer):
@@ -129,81 +127,6 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         pos = tf.tile(pos, [b, 1, 1, 1])
         pos = self.dense(pos)
         return tf.concat([x, pos], axis=-1)
-
-
-class BoundingBoxDiscipline(tf.keras.layers.Layer):
-    def __init__(self, penalty_weight=0.05):
-        super().__init__()
-        self.penalty_weight = tf.Variable(0.05, trainable=True)
-
-    def call(self, prediction_probs, expected_onehot):
-        # Use classe dominante como máscara
-        pred_classes = tf.argmax(prediction_probs, axis=-1)
-        true_classes = tf.argmax(expected_onehot, axis=-1)
-
-        # Considerar tudo que não é "classe de fundo"
-        pred_mask = pred_classes > 0
-        true_mask = true_classes > 0
-
-        def compute_penalty(pair):
-            pred, true = pair
-
-            def safe_bbox(mask):
-                coords = tf.where(mask)
-                count = tf.shape(coords)[0]
-
-                def fallback():
-                    return tf.constant([0.0, 0.0, 1.0, 1.0], dtype=tf.float32)
-
-                def compute():
-                    y_min = tf.cast(tf.reduce_min(coords[:, 0]), tf.float32)
-                    x_min = tf.cast(tf.reduce_min(coords[:, 1]), tf.float32)
-                    y_max = tf.cast(tf.reduce_max(coords[:, 0]), tf.float32)
-                    x_max = tf.cast(tf.reduce_max(coords[:, 1]), tf.float32)
-                    return tf.stack([y_min, x_min, y_max, x_max])
-
-                return tf.cond(count > 0, compute, fallback)
-
-            p_box = safe_bbox(pred)
-            t_box = safe_bbox(true)
-
-            pred_area = (p_box[2] - p_box[0] + 1.0) * \
-                (p_box[3] - p_box[1] + 1.0)
-            true_area = (t_box[2] - t_box[0] + 1.0) * \
-                (t_box[3] - t_box[1] + 1.0)
-
-            area_penalty = tf.nn.relu(
-                pred_area - true_area) / (true_area + 1.0)
-
-            center_offset = tf.sqrt(
-                tf.square((p_box[0] + p_box[2]) / 2.0 - (t_box[0] + t_box[2]) / 2.0) +
-                tf.square((p_box[1] + p_box[3]) / 2.0 -
-                          (t_box[1] + t_box[3]) / 2.0)
-            ) / 20.0
-
-            inter_ymin = tf.maximum(p_box[0], t_box[0])
-            inter_xmin = tf.maximum(p_box[1], t_box[1])
-            inter_ymax = tf.minimum(p_box[2], t_box[2])
-            inter_xmax = tf.minimum(p_box[3], t_box[3])
-            inter_area = tf.maximum(
-                0.0, inter_ymax - inter_ymin + 1.0) * tf.maximum(0.0, inter_xmax - inter_xmin + 1.0)
-            union_area = pred_area + true_area - inter_area + 1e-6
-            iou = inter_area / union_area
-            iou_penalty = 1.0 - iou
-
-            total_penalty = area_penalty + center_offset + iou_penalty
-            return tf.where(
-                tf.reduce_any(true) & tf.reduce_any(pred),
-                tf.tanh(total_penalty),
-                0.0
-            )
-
-        penalties = tf.map_fn(
-            compute_penalty, (pred_mask, true_mask),
-            fn_output_signature=tf.float32
-        )
-
-        return self.penalty_weight * tf.reduce_mean(penalties)
 
 
 class FractalEncoder(tf.keras.layers.Layer):
@@ -372,34 +295,34 @@ class ThresholdMemory(tf.keras.layers.Layer):
         return mean + tf.random.normal([], stddev=std * 0.5)
 
 
-class TaskPainSystem(keras.Model):
+class TaskPainSystem(tf.keras.Model):
     def __init__(self, latent_dim=128, task_output_dim=10, **kwargs):
         super(TaskPainSystem, self).__init__(**kwargs)
         self.latent_dim = latent_dim
         self.task_output_dim = task_output_dim
 
         # Shared encoder (like a brainstem, if you want to be poetic about it)
-        self.encoder = keras.Sequential([
-            layers.Conv2D(32, kernel_size=3,
+        self.encoder = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(32, kernel_size=3,
                           activation='relu', padding='same'),
-            layers.MaxPooling2D(pool_size=2),
-            layers.Conv2D(64, kernel_size=3,
+            tf.keras.layers.MaxPooling2D(pool_size=2),
+            tf.keras.layers.Conv2D(64, kernel_size=3,
                           activation='relu', padding='same'),
-            layers.MaxPooling2D(pool_size=2),
-            layers.Flatten(),
-            layers.Dense(latent_dim, activation='relu')
+            tf.keras.layers.MaxPooling2D(pool_size=2),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(latent_dim, activation='relu')
         ])
 
         # Task output (you know, for doing actual work)
-        self.task_head = keras.Sequential([
-            layers.Dense(64, activation='relu'),
-            layers.Dense(task_output_dim, activation='softmax')
+        self.task_head = tf.keras.Sequential([
+            tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dense(task_output_dim, activation='softmax')
         ])
 
         # Pain output (when your model hurts)
-        self.pain_head = keras.Sequential([
-            layers.Dense(64, activation='relu'),
-            layers.Dense(1, activation='softplus')  # always positive
+        self.pain_head = tf.keras.Sequential([
+            tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dense(1, activation='softplus')  # always positive
         ])
 
     def call(self, pred, expected, blended=None, training=False):

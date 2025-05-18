@@ -1,7 +1,6 @@
 # utils.py
 
 import tensorflow as tf
-from layers import BoundingBoxDiscipline
 
 
 def bounding_shape_penalty(pred_mask, true_mask):
@@ -92,7 +91,8 @@ def compute_all_losses(pred, expected, blended, pain_output):
     losses["symmetry"] = compute_auxiliary_loss(probs)
     losses["spatial_penalty"] = tf.reduce_mean(tf.nn.relu(
         tf.reduce_sum(probs, axis=-1) - 1.0)) * 0.01
-    losses["bbox"] = BoundingBoxDiscipline()(probs, expected_broadcast)
+    losses["bbox"] = BoundingBoxDiscipline(
+        penalty_weight=0.15)(probs, expected_broadcast)
     losses["decay"] = tf.reduce_mean(
         probs * spatial_decay_mask(tf.shape(pred))) * 0.005
     losses["repeat"] = repetition_penalty(pred) * 0.001
@@ -112,6 +112,81 @@ def compute_all_losses(pred, expected, blended, pain_output):
         losses["pain"] = tf.reduce_mean(adjusted_pain) * 0.05
 
     for name, value in losses.items():
-        tf.print(name, value)
+        tf.print("\n", name, value)
 
     return losses
+
+
+class BoundingBoxDiscipline(tf.keras.layers.Layer):
+    def __init__(self, penalty_weight=0.05):
+        super().__init__()
+        self.penalty_weight = 0.05
+
+    def call(self, prediction_probs, expected_onehot):
+        # Use classe dominante como máscara
+        pred_classes = tf.argmax(prediction_probs, axis=-1)
+        true_classes = tf.argmax(expected_onehot, axis=-1)
+
+        # Considerar tudo que não é "classe de fundo"
+        pred_mask = pred_classes > 0
+        true_mask = true_classes > 0
+
+        def compute_penalty(pair):
+            pred, true = pair
+
+            def safe_bbox(mask):
+                coords = tf.where(mask)
+                count = tf.shape(coords)[0]
+
+                def fallback():
+                    return tf.constant([0.0, 0.0, 1.0, 1.0], dtype=tf.float32)
+
+                def compute():
+                    y_min = tf.cast(tf.reduce_min(coords[:, 0]), tf.float32)
+                    x_min = tf.cast(tf.reduce_min(coords[:, 1]), tf.float32)
+                    y_max = tf.cast(tf.reduce_max(coords[:, 0]), tf.float32)
+                    x_max = tf.cast(tf.reduce_max(coords[:, 1]), tf.float32)
+                    return tf.stack([y_min, x_min, y_max, x_max])
+
+                return tf.cond(count > 0, compute, fallback)
+
+            p_box = safe_bbox(pred)
+            t_box = safe_bbox(true)
+
+            pred_area = (p_box[2] - p_box[0] + 1.0) * \
+                (p_box[3] - p_box[1] + 1.0)
+            true_area = (t_box[2] - t_box[0] + 1.0) * \
+                (t_box[3] - t_box[1] + 1.0)
+
+            area_penalty = tf.nn.relu(
+                pred_area - true_area) / (true_area + 1.0)
+
+            center_offset = tf.sqrt(
+                tf.square((p_box[0] + p_box[2]) / 2.0 - (t_box[0] + t_box[2]) / 2.0) +
+                tf.square((p_box[1] + p_box[3]) / 2.0 -
+                          (t_box[1] + t_box[3]) / 2.0)
+            ) / 20.0
+
+            inter_ymin = tf.maximum(p_box[0], t_box[0])
+            inter_xmin = tf.maximum(p_box[1], t_box[1])
+            inter_ymax = tf.minimum(p_box[2], t_box[2])
+            inter_xmax = tf.minimum(p_box[3], t_box[3])
+            inter_area = tf.maximum(
+                0.0, inter_ymax - inter_ymin + 1.0) * tf.maximum(0.0, inter_xmax - inter_xmin + 1.0)
+            union_area = pred_area + true_area - inter_area + 1e-6
+            iou = inter_area / union_area
+            iou_penalty = 1.0 - iou
+
+            total_penalty = area_penalty + center_offset + iou_penalty
+            return tf.where(
+                tf.reduce_any(true) & tf.reduce_any(pred),
+                tf.tanh(total_penalty),
+                0.0
+            )
+
+        penalties = tf.map_fn(
+            compute_penalty, (pred_mask, true_mask),
+            fn_output_signature=tf.float32
+        )
+
+        return self.penalty_weight * tf.reduce_mean(penalties)
