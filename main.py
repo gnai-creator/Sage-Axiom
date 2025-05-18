@@ -77,7 +77,22 @@ for task_id, task in list(tasks.items())[:TARGET_TASKS]:
     output_tensor = tf.one_hot(tf.convert_to_tensor(pad_to_shape(
         tf.convert_to_tensor(expected_output, dtype=tf.int32))), depth=10, dtype=tf.float32)
     z_task = model.encode_task(input_tensor, output_tensor)
-    tf.saved_model.save(model.task_encoder, f"task_embeddings/{task_id}")
+
+    # 🔧 Define explicitamente a função de exportação para o SavedModel
+
+    @tf.function(input_signature=[
+        tf.TensorSpec([None, 30, 30, 10], dtype=tf.float32, name="x_in"),
+        tf.TensorSpec([None, 30, 30, 10], dtype=tf.float32, name="x_out")
+    ])
+    def task_encoder_serving_fn(x_in, x_out):
+        return {"z_task": model.task_encoder(x_in, x_out)}
+
+    # 💾 Salva com a assinatura explícita
+    tf.saved_model.save(
+        model.task_encoder,
+        export_dir=f"task_embeddings/{task_id}",
+        signatures={"serving_default": task_encoder_serving_fn}
+    )
 
     feedback = None
     attempt = 0

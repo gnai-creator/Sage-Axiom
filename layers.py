@@ -22,8 +22,8 @@ class TokenEmbedding(tf.keras.layers.Layer):
         is_onehot = tf.equal(tf.shape(x)[-1], self.vocab_size)
         x = tf.cond(
             is_onehot,
-            lambda: tf.argmax(x, axis=-1, output_type=tf.int32),
-            lambda: tf.cast(x, tf.int32)
+            true_fn=lambda: tf.argmax(x, axis=-1, output_type=tf.int32),
+            false_fn=lambda: tf.cast(x, tf.int32)
         )
 
         input_shape = tf.shape(x)
@@ -95,15 +95,14 @@ class LongTermMemory(tf.keras.layers.Layer):
     def recall(self, index):
         return tf.expand_dims(tf.gather(self.memory, index), axis=0)
 
-
     def match_context(self, context):
         context = tf.reshape(
             context, [tf.shape(context)[0], 1, self.embedding_dim])
-        memory = tf.reshape(self.memory, [1, self.memory_size, self.embedding_dim])
+        memory = tf.reshape(
+            self.memory, [1, self.memory_size, self.embedding_dim])
         sim = tf.keras.losses.cosine_similarity(context, memory, axis=-1)
         best = tf.argmin(sim, axis=-1)
         return tf.gather(self.memory, best)  # retorna [batch, embedding_dim]
-
 
 
 class PositionalEncoding2D(tf.keras.layers.Layer):
@@ -176,17 +175,32 @@ class MultiHeadAttentionWrapper(tf.keras.layers.Layer):
         return self.attn(query=x, value=x, key=x)
 
 
+def identity_rotation(x):
+    return x
+
+
+def rotate_90(x):
+    return tf.image.rot90(x, k=1)
+
+
+def rotate_180(x):
+    return tf.image.rot90(x, k=2)
+
+
+def rotate_270(x):
+    return tf.image.rot90(x, k=3)
+
+
 class LearnedRotation(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
         self.rotations = [
-            lambda x: x,
-            lambda x: tf.image.rot90(x, k=1),
-            lambda x: tf.image.rot90(x, k=2),
-            lambda x: tf.image.rot90(x, k=3),
+            identity_rotation,
+            rotate_90,
+            rotate_180,
+            rotate_270,
         ]
-        # A camada Dense é criada aqui, mas o build garante que o input shape esteja certo
         self.selector_layer = tf.keras.layers.Dense(
             4, activation='softmax', name="rotation_selector"
         )
@@ -197,7 +211,6 @@ class LearnedRotation(tf.keras.layers.Layer):
                 "`LearnedRotation` precisa de canais definidos em tempo de compilação. "
                 f"Recebido: {input_shape}"
             )
-        # Força a construção do selector_layer com input_shape explícito
         self.selector_layer.build((input_shape[0], input_shape[-1]))
         super().build(input_shape)
 
@@ -392,7 +405,7 @@ class EnhancedEncoder(tf.keras.layers.Layer):
         return x
 
 
-class TaskEncoder(tf.keras.layers.Layer):
+class TaskEncoder(tf.keras.Model):
     def __init__(self, hidden_dim):
         super().__init__()
         self.hidden_dim = hidden_dim

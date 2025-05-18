@@ -130,3 +130,4 @@ def profile_time(start, label):
     mins, secs = divmod(elapsed, 60)
     log(f"[PERF] {label}: {int(mins)}m {int(secs)}s ({elapsed:.2f} segundos)")
     return elapsed
+
