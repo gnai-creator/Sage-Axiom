@@ -5,13 +5,15 @@ import datetime
 import traceback
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
+import seaborn as sns
+import logging
 
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, classification_report
 from core import SageAxiom
 import llm_driver
-
-import logging
 
 # === Logging Setup ===
 log_filename = f"log_arc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -29,6 +31,47 @@ def log(msg):
     logging.info(msg)
 
 
+def plot_history(history):
+    plt.figure(figsize=(10, 5))
+    for key in history.history:
+        plt.plot(history.history[key], label=key)
+    plt.title("SageAxiom Training History")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss/Metric")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("training_plot.png")
+    log("[INFO] Plot do treinamento salvo: training_plot.png")
+
+
+def profile_time(start, label):
+    elapsed = time.time() - start
+    mins, secs = divmod(elapsed, 60)
+    log(f"[PERF] {label}: {int(mins)}m {int(secs)}s ({elapsed:.2f} segundos)")
+
+
+def plot_confusion(y_true, y_pred):
+    y_true_flat = np.array(y_true).flatten()
+    y_pred_flat = np.array(y_pred).flatten()
+    cm = confusion_matrix(y_true_flat, y_pred_flat, labels=list(range(10)))
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=range(10), yticklabels=range(10))
+    plt.title("SageAxiom Confusion Matrix")
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.tight_layout()
+    plt.savefig("confusion_matrix.png")
+    log("[INFO] Matriz de confusão salva: confusion_matrix.png")
+
+    report = classification_report(
+        y_true_flat, y_pred_flat, labels=list(range(10)), output_dict=True)
+    with open("per_class_metrics.json", "w") as f:
+        json.dump(report, f, indent=2)
+    log("[INFO] Relatório de métricas por classe salvo: per_class_metrics.json")
+
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # === Hyperparâmetros ===
@@ -36,13 +79,12 @@ EPOCHS = 40
 TARGET_TASKS = 21
 EXPECTED_HOURS = 1
 TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
+SECONDS_PER_TASK = (TIME_LIMIT_MINUTES * 60) / TARGET_TASKS
 
 start_time = time.time()
 total_tasks = 0
 correct_tasks = 0
 submission_dict = defaultdict(list)
-
-log(f"[INFO] Começando execução por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos às {datetime.datetime.now()}.")
 
 
 def run_code(code: str, input_matrix: list) -> dict:
@@ -74,7 +116,6 @@ if __name__ == "__main__":
     with open("arc-agi_test_challenges.json") as f:
         tasks = json.load(f)
 
-    # === Treinamento do SageAxiom ===
     log("[INFO] Preparando dados para treinamento do SageAxiom...")
     X_train_all, y_train_all = [], []
     for task in tasks.values():
@@ -88,6 +129,7 @@ if __name__ == "__main__":
 
     X_all = tf.stack(X_train_all)
     y_all = tf.stack(y_train_all)
+
     X_all_onehot = tf.one_hot(X_all, depth=10)
 
     X_train_final, X_val, y_train_final, y_val = train_test_split(
@@ -99,36 +141,31 @@ if __name__ == "__main__":
     y_train_final = tf.convert_to_tensor(y_train_final, dtype=tf.int32)
     y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
 
+    log("[INFO] Compilando modelo SageAxiom...")
     model = SageAxiom(hidden_dim=128, use_hard_choice=False)
     model.compile(optimizer=tf.keras.optimizers.Adam(
         learning_rate=0.001), loss=None, metrics=[])
     model(X_train_final[:1])
 
+    log("[INFO] Iniciando treinamento...")
     training_start = time.time()
-    log("[INFO] Iniciando treinamento do SageAxiom...")
     history = model.fit(X_train_final, y_train_final, validation_data=(
         X_val, y_val), epochs=EPOCHS, verbose=1)
-    training_time = time.time() - training_start
+    profile_time(training_start, "Tempo de treinamento")
 
     log("[INFO] Treinamento concluído.")
     for k, v in history.history.items():
         log(f"  {k}: {[round(float(f), 4) for f in v]}")
 
-    # Ajusta o tempo restante e o tempo por tarefa
-    available_eval_seconds = (EXPECTED_HOURS * 60 * 60) - training_time
-    SECONDS_PER_TASK = available_eval_seconds / TARGET_TASKS
-    log(f"[INFO] Tempo gasto no treinamento: {training_time:.2f} segundos")
-    log(
-        f"[INFO] Tempo restante para avaliação: {available_eval_seconds:.2f} segundos")
-    log(f"[INFO] Tempo alocado por tarefa: {SECONDS_PER_TASK:.2f} segundos")
-
-    start_time = time.time()  # Inicia contagem para a parte de avaliação
+    plot_history(history)
+    plot_confusion(y_val.numpy(), tf.argmax(
+        model(X_val, training=False)["logits"], axis=-1).numpy())
 
     # === Avaliação das tarefas ===
     log("[INFO] Começando avaliação de tarefas...")
     task_iter = iter(tasks.items())
 
-    while (time.time() - start_time) < available_eval_seconds and total_tasks < TARGET_TASKS:
+    while (time.time() - start_time) < TIME_LIMIT_MINUTES * 60 and total_tasks < TARGET_TASKS:
         try:
             task_id, task = next(task_iter)
         except StopIteration:
@@ -195,7 +232,8 @@ if __name__ == "__main__":
 
                 x_test = tf.convert_to_tensor(
                     [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))], dtype=tf.int32)
-                x_onehot_test = tf.one_hot(x_test, depth=10, dtype=tf.float32)
+                x_onehot_test = tf.one_hot(
+                    x_test, depth=10, dtype=tf.float32)
                 y_pred_test = model(x_onehot_test, training=False)
                 pred_test = tf.argmax(
                     y_pred_test["logits"][0], axis=-1).numpy().tolist()
@@ -218,13 +256,13 @@ if __name__ == "__main__":
         estimated_score = correct_tasks / total_tasks * 100
         log(
             f"[INFO] Estimativa de score (em {total_tasks} tarefas): {estimated_score:.2f}%")
+
         final_score = (correct_tasks / 250) * 100
         log(
             f"[INFO] Projeção final aproximada com base nas 250 tasks do ARC: {final_score:.2f}%")
 
-    total_eval_time = time.time() - start_time
-    mins, secs = divmod(total_eval_time, 60)
-    log(
-        f"[INFO] Tempo total de execução (após treinamento): {int(mins)}m {int(secs)}s ({total_eval_time:.2f} segundos)")
+    total_time = time.time() - start_time
+    mins, secs = divmod(total_time, 60)
+    log(f"[INFO] Tempo total de execução: {int(mins)}m {int(secs)}s ({total_time:.2f} segundos)")
     log("[INFO] Processo encerrado.")
     print(f"Logs salvos em: {log_filename}")
