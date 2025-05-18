@@ -6,16 +6,16 @@ import numpy as np
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
 from core import SageAxiom
+from layers import TaskEncoder
 import llm_driver
-from functions import (
-    log, pad_to_shape, run_code, compare_outputs, describe_diff,
-    plot_history, plot_confusion, plot_attempts_stats, profile_time
-)
+from functions import *
+from tensorflow.python.trackable.base import Trackable
+import shutil
 
 # === Hiperparâmetros e limites ===
-EPOCHS = 4
+EPOCHS = 1
 TARGET_TASKS = 21
-EXPECTED_HOURS = 1
+EXPECTED_HOURS = 1 / 3  # Tempo esperado para completar as tasks
 TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
 SECONDS_PER_TASK = (TIME_LIMIT_MINUTES * 60) / TARGET_TASKS
 
@@ -76,23 +76,16 @@ for task_id, task in list(tasks.items())[:TARGET_TASKS]:
         tf.convert_to_tensor(input_grid, dtype=tf.int32))), depth=10, dtype=tf.float32)
     output_tensor = tf.one_hot(tf.convert_to_tensor(pad_to_shape(
         tf.convert_to_tensor(expected_output, dtype=tf.int32))), depth=10, dtype=tf.float32)
-    z_task = model.encode_task(input_tensor, output_tensor)
 
-    # 🔧 Define explicitamente a função de exportação para o SavedModel
+    print("\n--- Atributos rastreados ---")
 
-    @tf.function(input_signature=[
-        tf.TensorSpec([None, 30, 30, 10], dtype=tf.float32, name="x_in"),
-        tf.TensorSpec([None, 30, 30, 10], dtype=tf.float32, name="x_out")
-    ])
-    def task_encoder_serving_fn(x_in, x_out):
-        return {"z_task": model.task_encoder(x_in, x_out)}
-
-    # 💾 Salva com a assinatura explícita
-    tf.saved_model.save(
-        model.task_encoder,
-        export_dir=f"task_embeddings/{task_id}",
-        signatures={"serving_default": task_encoder_serving_fn}
-    )
+    for name, val in model.__dict__.items():
+        try:
+            print(f"{name}: {type(val)}")
+        except Exception as e:
+            print(f"{name}: ERROR {e}")
+        # Builda com dummy input
+    export_task_embedding(task_id, hidden_dim=128)
 
     feedback = None
     attempt = 0
@@ -156,7 +149,7 @@ for task_id, task in list(tasks.items())[:TARGET_TASKS]:
             pred_test = tf.argmax(
                 y_pred_test["logits"][0], axis=-1).numpy().tolist()
             submission_dict[task_id].append(pred_test)
-
+    os.makedirs("history_prompts", exist_ok=True)
     with open(f"history_prompts/{task_id}.json", "w") as f:
         json.dump(historyPrompt, f, indent=2)
 

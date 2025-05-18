@@ -11,8 +11,7 @@ class TokenEmbedding(tf.keras.layers.Layer):
         self.vocab_size = vocab_size
         self.dim = dim
         self.embed_layer = tf.keras.layers.Embedding(
-            input_dim=vocab_size, output_dim=dim
-        )
+            input_dim=vocab_size, output_dim=dim)
 
     def call(self, x):
         if x.shape.rank != 4:
@@ -20,21 +19,17 @@ class TokenEmbedding(tf.keras.layers.Layer):
                 f"TokenEmbedding espera input 4D [B, H, W, C]. Recebido: {x.shape}")
 
         is_onehot = tf.equal(tf.shape(x)[-1], self.vocab_size)
-        x = tf.cond(
-            is_onehot,
-            true_fn=lambda: tf.argmax(x, axis=-1, output_type=tf.int32),
-            false_fn=lambda: tf.cast(x, tf.int32)
-        )
+
+        def _argmax_fn(): return tf.argmax(x, axis=-1, output_type=tf.int32)
+        def _cast_fn(): return tf.cast(x, tf.int32)
+
+        x = tf.cond(is_onehot, true_fn=_argmax_fn, false_fn=_cast_fn)
 
         input_shape = tf.shape(x)
-        batch = input_shape[0]
-        H = input_shape[1]
-        W = input_shape[2]
-
         flat_x = tf.reshape(x, [-1])
         flat_emb = self.embed_layer(flat_x)
-
-        output = tf.reshape(flat_emb, [batch, H, W, self.dim])
+        output = tf.reshape(
+            flat_emb, [input_shape[0], input_shape[1], input_shape[2], self.dim])
         output.set_shape([None, None, None, self.dim])
         return output
 
@@ -55,23 +50,45 @@ class OutputRefinement(tf.keras.layers.Layer):
 
 
 class EpisodicMemory(tf.keras.layers.Layer):
-    def __init__(self):
+    def __init__(self, max_steps=16, hidden_dim=128):
         super().__init__()
-        self.buffer = None
+        self.max_steps = max_steps
+        self.hidden_dim = hidden_dim
+        self.buffer = self.add_weight(
+            shape=(max_steps, hidden_dim), initializer='zeros', trainable=False, name="episodic_buffer"
+        )
+        self.pointer = self.add_weight(
+            shape=(), initializer='zeros', dtype=tf.int32, trainable=False, name="buffer_pointer"
+        )
+
+        # ✅ AQUI: inicializa só uma vez
+        self.project_to_hidden = tf.keras.layers.Dense(hidden_dim)
 
     def reset(self):
-        self.buffer = None
+        self.buffer.assign(tf.zeros_like(self.buffer))
+        self.pointer.assign(0)
 
     def write(self, embedding):
-        if self.buffer is None:
-            self.buffer = embedding[tf.newaxis, ...]
-        else:
-            self.buffer = tf.concat(
-                [self.buffer, embedding[tf.newaxis, ...]], axis=0)
+        index = tf.math.mod(self.pointer, self.max_steps)
+
+        # Embedding pode ter batch (1, hidden_dim) ou já estar flat
+        if embedding.shape.rank == 2:
+            embedding = embedding[0]  # pega o primeiro vetor
+        elif embedding.shape.rank != 1:
+            raise ValueError(
+                f"Embedding com rank inesperado: {embedding.shape}")
+
+        # Agora embedding tem shape [hidden_dim]
+        embedding = tf.expand_dims(embedding, axis=0)  # vira [1, hidden_dim]
+        # denso e volta pra [hidden_dim]
+        embedding = self.project_to_hidden(embedding)[0]
+
+        updated = tf.tensor_scatter_nd_update(
+            self.buffer, [[index]], [embedding])
+        self.buffer.assign(updated)
+        self.pointer.assign_add(1)
 
     def read_all(self):
-        if self.buffer is None:
-            return tf.zeros((1, 1, 1))
         return self.buffer
 
 
@@ -175,53 +192,23 @@ class MultiHeadAttentionWrapper(tf.keras.layers.Layer):
         return self.attn(query=x, value=x, key=x)
 
 
-def identity_rotation(x):
-    return x
-
-
-def rotate_90(x):
-    return tf.image.rot90(x, k=1)
-
-
-def rotate_180(x):
-    return tf.image.rot90(x, k=2)
-
-
-def rotate_270(x):
-    return tf.image.rot90(x, k=3)
-
-
 class LearnedRotation(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
-        self.rotations = [
-            identity_rotation,
-            rotate_90,
-            rotate_180,
-            rotate_270,
-        ]
         self.selector_layer = tf.keras.layers.Dense(
-            4, activation='softmax', name="rotation_selector"
-        )
-
-    def build(self, input_shape):
-        if input_shape[-1] is None:
-            raise ValueError(
-                "`LearnedRotation` precisa de canais definidos em tempo de compilação. "
-                f"Recebido: {input_shape}"
-            )
-        self.selector_layer.build((input_shape[0], input_shape[-1]))
-        super().build(input_shape)
+            4, activation='softmax', name="rotation_selector")
 
     def call(self, x):
+        def rot_fn(k): return tf.image.rot90(x, k=k)
+
         b = tf.shape(x)[0]
-        pooled = tf.reduce_mean(x, axis=[1, 2])  # [batch, channels]
-        weights = self.selector_layer(pooled)  # [batch, 4]
+        pooled = tf.reduce_mean(x, axis=[1, 2])
+        weights = self.selector_layer(pooled)
         weights = tf.reshape(weights, [b, 4, 1, 1, 1])
 
-        rotated = [rot(x) for rot in self.rotations]
-        stacked = tf.stack(rotated, axis=1)  # [batch, 4, h, w, c]
+        rotated = [x, rot_fn(1), rot_fn(2), rot_fn(3)]
+        stacked = tf.stack(rotated, axis=1)
         out = tf.reduce_sum(stacked * weights, axis=1)
         return out
 
@@ -248,38 +235,36 @@ class MeanderHypothesisLayer(tf.keras.layers.Layer):
 class ChoiceHypothesisModule(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.base_hypotheses = 4
-        self.num_hypotheses = self.base_hypotheses + 1
-        self.meander = MeanderHypothesisLayer(dim)
-        self.input_proj = tf.keras.layers.Conv2D(
-            dim, kernel_size=1, activation='relu')
-        self.hypotheses = [
-            tf.keras.layers.Conv2D(dim, kernel_size=1, activation='relu')
-            for _ in range(self.base_hypotheses)
-        ]
-        self.selector = tf.keras.layers.Dense(
-            self.num_hypotheses, activation='softmax')
+        self.dim = dim
+        self.meander = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(dim, 1, activation='relu'),
+            tf.keras.layers.Conv2D(dim, 1)
+        ])
+        self.input_proj = tf.keras.layers.Conv2D(dim, 1, activation='relu')
+        self.h1 = tf.keras.layers.Conv2D(dim, 1, activation='relu')
+        self.h2 = tf.keras.layers.Conv2D(dim, 1, activation='relu')
+        self.h3 = tf.keras.layers.Conv2D(dim, 1, activation='relu')
+        self.h4 = tf.keras.layers.Conv2D(dim, 1, activation='relu')
+        self.selector = tf.keras.layers.Dense(5, activation='softmax')
 
     def call(self, x, hard=False):
         x = self.input_proj(x)
-        candidates = [h(x) for h in self.hypotheses] + [self.meander(x)]
-
+        candidates = [self.h1(x), self.h2(x), self.h3(x),
+                      self.h4(x), self.meander(x)]
         stacked = tf.stack(candidates, axis=1)
-
         pooled = tf.reduce_mean(x, axis=[1, 2])
         weights = self.selector(pooled)
-
         entropy = -tf.reduce_sum(weights *
                                  tf.math.log(weights + 1e-8), axis=-1)
         self.add_loss(0.01 * tf.reduce_mean(entropy))
 
         if hard:
             idx = tf.argmax(weights, axis=-1)
-            one_hot = tf.one_hot(idx, depth=self.num_hypotheses, dtype=tf.float32)[
+            one_hot = tf.one_hot(idx, depth=5, dtype=tf.float32)[
                 :, :, tf.newaxis, tf.newaxis, tf.newaxis]
             return tf.reduce_sum(stacked * one_hot, axis=1)
         else:
-            weights = tf.reshape(weights, [-1, self.num_hypotheses, 1, 1, 1])
+            weights = tf.reshape(weights, [-1, 5, 1, 1, 1])
             return tf.reduce_sum(stacked * weights, axis=1)
 
 
@@ -315,32 +300,30 @@ class TaskPainSystem(tf.keras.Model):
         self.latent_dim = latent_dim
         self.task_output_dim = task_output_dim
 
-        # Shared encoder (like a brainstem, if you want to be poetic about it)
         self.encoder = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(32, kernel_size=3,
-                                   activation='relu', padding='same'),
+            tf.keras.layers.Conv2D(
+                32, kernel_size=3, activation='relu', padding='same'),
             tf.keras.layers.MaxPooling2D(pool_size=2),
-            tf.keras.layers.Conv2D(64, kernel_size=3,
-                                   activation='relu', padding='same'),
+            tf.keras.layers.Conv2D(
+                64, kernel_size=3, activation='relu', padding='same'),
             tf.keras.layers.MaxPooling2D(pool_size=2),
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(latent_dim, activation='relu')
         ])
 
-        # Task output (you know, for doing actual work)
         self.task_head = tf.keras.Sequential([
             tf.keras.layers.Dense(64, activation='relu'),
             tf.keras.layers.Dense(task_output_dim, activation='softmax')
         ])
 
-        # Pain output (when your model hurts)
         self.pain_head = tf.keras.Sequential([
             tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(1, activation='softplus')  # always positive
+            tf.keras.layers.Dense(1, activation='softplus')
         ])
 
-    def call(self, pred, expected, blended=None, training=False):
+        self.pain_loss_fn = tf.keras.losses.MeanSquaredError()
 
+    def call(self, pred, expected, blended=None, training=False):
         if blended is None:
             blended = tf.zeros_like(pred)
 
@@ -353,14 +336,13 @@ class TaskPainSystem(tf.keras.Model):
     def compute_loss(self, data):
         x, y = data
         y_task = y["task"]
-        y_pain = y.get("pain")  # optional
+        y_pain = y.get("pain")
 
         outputs = self(x, training=True)
         task_loss = self.compiled_loss(y_task, outputs["task"])
 
         if y_pain is not None:
-            pain_loss = keras.losses.mean_squared_error(
-                y_pain, outputs["pain"])
+            pain_loss = self.pain_loss_fn(y_pain, outputs["pain"])
             total_loss = task_loss + tf.reduce_mean(pain_loss)
         else:
             total_loss = task_loss
@@ -408,32 +390,31 @@ class EnhancedEncoder(tf.keras.layers.Layer):
 class TaskEncoder(tf.keras.Model):
     def __init__(self, hidden_dim):
         super().__init__()
-        self.hidden_dim = hidden_dim
+        # ⚠️ Remover self.hidden_dim se não for usado para definir comportamento dinâmico
         self.input_proj = tf.keras.layers.Conv2D(
             hidden_dim, 3, padding='same', activation='relu')
         self.output_proj = tf.keras.layers.Conv2D(
             hidden_dim, 3, padding='same', activation='relu')
-        self.combined_proj = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(
-                hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.Conv2D(
-                hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.GlobalAveragePooling2D(),
-            tf.keras.layers.Dense(
-                hidden_dim, activation='tanh')  # final z_task
-        ])
+        self.conv1 = tf.keras.layers.Conv2D(
+            hidden_dim, 3, padding='same', activation='relu')
+        self.conv2 = tf.keras.layers.Conv2D(
+            hidden_dim, 3, padding='same', activation='relu')
+        self.pool = tf.keras.layers.GlobalAveragePooling2D()
+        self.dense = tf.keras.layers.Dense(hidden_dim, activation='tanh')
 
-    def call(self, x_in, x_out):
-        """
-        Recebe dois tensores [B, H, W, 10] (one-hot input/output) e retorna z_task [B, hidden_dim]
-        """
+    def call(self, inputs):
+        x_in = inputs["x_in"]
+        x_out = inputs["x_out"]
+
+        # Sanity check pra não passar vergonha depois
         if x_in.shape != x_out.shape:
             raise ValueError("Shape mismatch entre input e output")
 
-        x_concat = tf.concat([
-            self.input_proj(x_in),
-            self.output_proj(x_out)
-        ], axis=-1)
+        x_in_proj = self.input_proj(x_in)
+        x_out_proj = self.output_proj(x_out)
+        x = tf.concat([x_in_proj, x_out_proj], axis=-1)
 
-        z = self.combined_proj(x_concat)
-        return z  # shape [B, hidden_dim]
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.pool(x)
+        return self.dense(x)

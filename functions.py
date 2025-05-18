@@ -6,7 +6,10 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import seaborn as sns
 import logging
+import traceback
 from sklearn.metrics import confusion_matrix, classification_report
+from layers import TaskEncoder
+import shutil
 
 log_filename = f"log_arc_{time.strftime('%Y%m%d_%H%M%S')}.txt"
 logging.basicConfig(
@@ -131,3 +134,56 @@ def profile_time(start, label):
     log(f"[PERF] {label}: {int(mins)}m {int(secs)}s ({elapsed:.2f} segundos)")
     return elapsed
 
+
+class InlineTaskEncoder(tf.keras.Model):
+    def __init__(self, hidden_dim=128):
+        super().__init__()
+        self.encoder = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(
+                hidden_dim, 3, padding='same', activation='relu'),
+            tf.keras.layers.Conv2D(
+                hidden_dim, 3, padding='same', activation='relu'),
+            tf.keras.layers.GlobalAveragePooling2D(),
+            tf.keras.layers.Dense(hidden_dim, activation='tanh')
+        ])
+        self.input_proj = tf.keras.layers.Conv2D(
+            hidden_dim, 3, padding='same', activation='relu')
+        self.output_proj = tf.keras.layers.Conv2D(
+            hidden_dim, 3, padding='same', activation='relu')
+
+    def call(self, inputs):
+        x_in = inputs["x_in"]
+        x_out = inputs["x_out"]
+        if x_in.shape != x_out.shape:
+            raise ValueError("Shape mismatch entre input e output")
+        x_in_proj = self.input_proj(x_in)
+        x_out_proj = self.output_proj(x_out)
+        x = tf.concat([x_in_proj, x_out_proj], axis=-1)
+        return self.encoder(x)
+
+
+def export_task_embedding(task_id, hidden_dim=128):
+    encoder_model = InlineTaskEncoder(hidden_dim=hidden_dim)
+
+    dummy_input = {
+        "x_in": tf.zeros([1, 30, 30, 10], dtype=tf.float32),
+        "x_out": tf.zeros([1, 30, 30, 10], dtype=tf.float32),
+    }
+    encoder_model(dummy_input)
+
+    @tf.function(input_signature=[{
+        "x_in": tf.TensorSpec([None, 30, 30, 10], tf.float32),
+        "x_out": tf.TensorSpec([None, 30, 30, 10], tf.float32),
+    }])
+    def serving_fn(inputs):
+        return encoder_model(inputs)
+
+    export_path = f"task_embeddings/{task_id}"
+    shutil.rmtree(export_path, ignore_errors=True)
+    os.makedirs(export_path, exist_ok=True)
+
+    tf.saved_model.save(
+        encoder_model,
+        export_dir=export_path,
+        signatures={"serving_default": serving_fn}
+    )

@@ -31,14 +31,6 @@ class SageAxiom(tf.keras.Model):
         self.pain_system = TaskPainSystem(latent_dim=hidden_dim)
         self.attend_memory = AttentionOverMemory(hidden_dim)
 
-        self.task_encoder = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(
-                hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.GlobalAveragePooling2D(),
-            tf.keras.layers.Dense(hidden_dim, activation='relu')
-        ])
-
         self.projector = tf.keras.layers.Conv2D(hidden_dim, 1)
         self.decoder = tf.keras.Sequential([
             tf.keras.layers.Conv2D(
@@ -60,17 +52,18 @@ class SageAxiom(tf.keras.Model):
         self.refine_weight = self.add_weight(
             name="refine_weight", shape=(), initializer=tf.keras.initializers.Constant(0.5), trainable=False
         )
-        self.task_encoder = TaskEncoder(hidden_dim)
+        # self.task_encoder = TaskEncoder(hidden_dim)
 
         # === Corrigido: Dense fora do call ===
         self.pool_dense1 = tf.keras.layers.Dense(
             self.hidden_dim, activation='relu')
         self.pool_dense2 = tf.keras.layers.Dense(self.hidden_dim)
 
-    def encode_task(self, input_tensor, output_tensor):
-        x_in = tf.expand_dims(input_tensor, axis=0)
-        x_out = tf.expand_dims(output_tensor, axis=0)
-        return self.task_encoder(x_in, x_out)
+
+    # def encode_task(self, input_tensor, output_tensor):
+    #     x_in = tf.expand_dims(input_tensor, axis=0)
+    #     x_out = tf.expand_dims(output_tensor, axis=0)
+    #     return self.task_encoder({"x_in": x_in, "x_out": x_out})
 
 
     def train_step(self, data):
@@ -113,7 +106,8 @@ class SageAxiom(tf.keras.Model):
         out, [state] = self.agent(x_flat, [state])
         self.memory.write(out)
 
-        memory_tensor = tf.transpose(self.memory.read_all(), [1, 0, 2])
+        memory_tensor = tf.expand_dims(self.memory.read_all(), axis=0)  # [1, 16, 128]
+
         memory_context = self.attend_memory(memory_tensor, state)
         long_term_context = self.longterm.match_context(state)
         # garante [batch, hidden_dim]
@@ -160,9 +154,13 @@ class SageAxiom(tf.keras.Model):
                               depth=10, dtype=tf.float32)
         pain = self.pain_system(final_logits, expected,
                                 blended, training=training)
-        losses = compute_all_losses(final_logits, y_seq, blended, pain["pain"])
+        loss_dict = compute_all_losses(
+            final_logits, y_seq, blended, pain["pain"])
 
-        total_loss = tf.add_n(list(losses.values()))
+
+
+        total_loss = tf.add_n(list(loss_dict.values()))
+
         if training:
             total_loss += 0.01 * \
                 temporal_symmetry_loss(tf.expand_dims(final_logits, axis=1))
@@ -173,3 +171,4 @@ class SageAxiom(tf.keras.Model):
     @property
     def metrics(self):
         return [self.loss_tracker, self.val_loss_tracker]
+
