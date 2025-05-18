@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     print("Treinamento concluído. Histórico:", history.history)
 
-    for i, task_id in enumerate(task_keys):
+    for i, task_id in enumerate(tasks.keys()):
         if total_tasks >= TARGET_TASKS or (time.time() - start_time) > TIME_LIMIT_MINUTES * 60:
             print("\u23f0 Tempo esgotado ou tarefas completas.")
             break
