@@ -1,1 +1,4 @@
 .venv/
+__pychache__/
+
+Qwen3-32B-Q4_K_M.gguf

@@ -2,10 +2,12 @@
 
 import tensorflow as tf
 
+
 def bounding_shape_penalty(pred_mask, true_mask):
     pred_size = tf.reduce_sum(tf.cast(pred_mask, tf.float32), axis=[1, 2])
     true_size = tf.reduce_sum(tf.cast(true_mask, tf.float32), axis=[1, 2])
     return tf.reduce_mean(tf.abs(pred_size - true_size))
+
 
 def continuity_loss(logits):
     probs = tf.nn.softmax(logits, axis=-1)
@@ -16,9 +18,11 @@ def continuity_loss(logits):
     loss = tf.reduce_mean(dx) + tf.reduce_mean(dy)
     return 0.01 * loss  # Ajuste o peso
 
+
 def temporal_symmetry_loss(logits_seq):
     flipped = tf.reverse(logits_seq, axis=[1])
     return tf.reduce_mean(tf.square(logits_seq - flipped))
+
 
 def spatial_decay_mask(shape, decay_rate=0.1):
     h, w = shape[1], shape[2]
@@ -29,11 +33,13 @@ def spatial_decay_mask(shape, decay_rate=0.1):
     decay = tf.expand_dims(decay, axis=-1)
     return decay
 
+
 def repetition_penalty(logits):
     probs = tf.nn.softmax(logits, axis=-1)
     entropy = -tf.reduce_sum(probs * tf.math.log(probs + 1e-8), axis=-1)
     penalty = tf.reduce_mean(entropy)
     return 0.01 * penalty
+
 
 def reverse_penalty(logits, expected):
     probs = tf.nn.softmax(logits, axis=-1)
@@ -41,6 +47,7 @@ def reverse_penalty(logits, expected):
     non_target = 1.0 - expected_mask
     penalty = tf.reduce_mean(probs * non_target)
     return 0.01 * penalty
+
 
 def edge_alignment_penalty(output_probs):
     # Extrai bordas
@@ -50,12 +57,22 @@ def edge_alignment_penalty(output_probs):
     right = output_probs[:, :, -1:, :]
 
     # Soma total de probabilidade nas bordas
-    edge_sum = tf.reduce_sum(top) + tf.reduce_sum(bottom) + tf.reduce_sum(left) + tf.reduce_sum(right)
+    edge_sum = tf.reduce_sum(top) + tf.reduce_sum(bottom) + \
+        tf.reduce_sum(left) + tf.reduce_sum(right)
 
     # Número total de elementos considerados
-    total_pixels = tf.cast(tf.size(top) + tf.size(bottom) + tf.size(left) + tf.size(right), tf.float32)
+    total_pixels = tf.cast(tf.size(top) + tf.size(bottom) +
+                           tf.size(left) + tf.size(right), tf.float32)
 
     penalty = edge_sum / total_pixels
     return 0.01 * penalty
 
 
+def compute_auxiliary_loss(probs):
+    """
+    Penaliza saídas pouco informativas — incentiva distribuições mais 'concentradas'.
+    Exemplo: faz o modelo preferir [0,0,1,0,...] ao invés de distribuições planas.
+    """
+    entropy = -tf.reduce_sum(probs * tf.math.log(probs + 1e-8), axis=-1)
+    mean_entropy = tf.reduce_mean(entropy)
+    return 0.01 * mean_entropy
