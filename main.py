@@ -14,7 +14,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # === Execução dos tasks ===
-
+EPOCHS = 10
 TARGET_TASKS = 20
 EXPECTED_HOURS = 0.5
 TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
@@ -27,8 +27,6 @@ submission_dict = defaultdict(list)
 
 print(
     f"⏱️ Iniciando processo por até {TARGET_TASKS} tasks ou {TIME_LIMIT_MINUTES} minutos (~{SECONDS_PER_TASK:.1f}s por task) as {datetime.datetime.now()}.")
-
-
 
 
 def run_code(code: str, input_matrix: list) -> dict:
@@ -58,7 +56,6 @@ def pad_to_shape(tensor, target_shape=(30, 30)):
     pad_height = target_shape[0] - tf.shape(tensor)[0]
     pad_width = target_shape[1] - tf.shape(tensor)[1]
     return tf.pad(tensor, paddings=[[0, pad_height], [0, pad_width]], constant_values=0)
-
 
 
 if __name__ == "__main__":
@@ -108,10 +105,9 @@ if __name__ == "__main__":
     history = model.fit(
         X_train_final, y_train_final,
         validation_data=(X_val, y_val),
-        epochs=40,
+        epochs=EPOCHS,
         verbose=1
     )
-
 
     print("Treinamento concluído. Histórico:", history.history)
 
