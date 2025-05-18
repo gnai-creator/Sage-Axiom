@@ -106,8 +106,10 @@ def save_bad_code(code: str, reason: str, grid: list):
         f.write(code.strip() + "\n")
 
 
-def prompt_llm(task_input: list, prompt_template: str) -> str:
+def prompt_llm(task_input: list, prompt_template: str, feedback: str = None) -> str:
     prompt = prompt_template.format(grid=json.dumps(task_input))
+    if feedback:
+        prompt += f"\n\nA tentativa anterior falhou. Aqui está um feedback:\n{feedback}\nTente novamente."
 
     if len(prompt.split()) > 500:
         print("[WARN] Prompt muito longo, pode estourar o contexto da LLM.")

@@ -1,5 +1,3 @@
-# main.py — versão aprimorada com loop esperto e Qwen com vergonha
-
 import os
 import time
 import json
@@ -130,45 +128,41 @@ if __name__ == "__main__":
         task_timeout = SECONDS_PER_TASK
         predicted = None
         success = False
+        feedback = None
         attempt = 0
 
-        # Tenta múltiplas vezes com LLM
         while (time.time() - task_start_time) < task_timeout and not success:
-            log(f"[INFO] Tentativa #{attempt+1} com Qwen...")
-            try:
-                code = llm_driver.prompt_llm(
-                    input_grid, llm_driver.prompt_template)
-                result = run_code(code, input_grid)
+            log(f"[INFO] Tentativa #{attempt + 1} com Qwen...")
+            code = llm_driver.prompt_llm(
+                input_grid, llm_driver.prompt_template, feedback=feedback)
+            result = run_code(code, input_grid)
 
-                if result["success"] and compare_outputs(result["output"], expected_output):
-                    log("[INFO] Qwen acertou 🎯.")
-                    predicted = result["output"]
+            if result["success"] and compare_outputs(result["output"], expected_output):
+                log("[INFO] Qwen acertou 🎯.")
+                predicted = result["output"]
+                success = True
+                break
+            else:
+                log("[INFO] Qwen falhou. Chamando SageAxiom para feedback...")
+                x = tf.convert_to_tensor(
+                    [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))], dtype=tf.int32)
+                x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
+                y_pred = model(x_onehot, training=False)
+                fallback_output = tf.argmax(
+                    y_pred["logits"][0], axis=-1).numpy().tolist()
+
+                if compare_outputs(fallback_output, expected_output):
+                    log("[INFO] SageAxiom acertou (fallback).")
+                    predicted = fallback_output
                     success = True
                     break
                 else:
-                    log("[WARN] Código Qwen inválido ou resposta incorreta.")
-            except Exception as e:
-                log(f"[ERRO] Execução do código falhou: {e}")
+                    feedback = log(f"""
+                    A tentativa falhou. SageAxiom sugeriu a seguinte transformação:
+                    {fallback_output}
+                    log("[INFO] Feedback gerado para nova tentativa com Qwen.""")
 
             attempt += 1
-
-        # Fallback com SageAxiom
-        if not success:
-            log("[INFO] Qwen falhou. Invocando SageAxiom...")
-            x = tf.convert_to_tensor(
-                [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))], dtype=tf.int32
-            )
-            x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
-            y_pred = model(x_onehot, training=False)
-            fallback_output = tf.argmax(
-                y_pred["logits"][0], axis=-1).numpy().tolist()
-
-            if compare_outputs(fallback_output, expected_output):
-                log("[INFO] SageAxiom acertou (fallback).")
-                predicted = fallback_output
-                success = True
-            else:
-                log("[INFO] Nenhuma solução correta encontrada 😓.")
 
         if success:
             correct_tasks += 1
@@ -185,17 +179,15 @@ if __name__ == "__main__":
                 except:
                     pass
 
-                # Fallback para test
                 x_test = tf.convert_to_tensor(
-                    [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))], dtype=tf.int32
-                )
+                    [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))], dtype=tf.int32)
                 x_onehot_test = tf.one_hot(x_test, depth=10, dtype=tf.float32)
                 y_pred_test = model(x_onehot_test, training=False)
                 pred_test = tf.argmax(
                     y_pred_test["logits"][0], axis=-1).numpy().tolist()
                 submission_dict[task_id].append(pred_test)
         else:
-            log("[INFO] Task falhou completamente. Adeus, esperança.")
+            log("[INFO] Task falhou completamente. Tristeza profunda.")
 
         total_tasks += 1
 
@@ -214,6 +206,7 @@ if __name__ == "__main__":
         final_score = (correct_tasks / 250) * 100
         log(
             f"[INFO] Projeção final aproximada com base nas 250 tasks do ARC: {final_score:.2f}%")
+
     total_time = time.time() - start_time
     mins, secs = divmod(total_time, 60)
     log(f"[INFO] Tempo total de execução: {int(mins)}m {int(secs)}s ({total_time:.2f} segundos)")
