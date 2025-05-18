@@ -78,6 +78,14 @@ def test_transform_code(code: str) -> bool:
         return False
 
 
+def save_bad_code(code: str, reason: str):
+    """Salva código defeituoso em um arquivo com a razão."""
+    with open(".bad_llm.txt", "a", encoding="utf-8") as f:
+        f.write("\n" + "=" * 60 + "\n")
+        f.write(f"# Motivo: {reason}\n")
+        f.write(code.strip() + "\n")
+
+
 def prompt_llm(task_input: list, prompt_template: str) -> str:
     prompt = prompt_template.format(grid=json.dumps(task_input))
 
@@ -96,8 +104,13 @@ def prompt_llm(task_input: list, prompt_template: str) -> str:
         full_code = result['choices'][0]['message']['content']
         function_code = extract_transform_function(full_code)
 
-        if not function_code or not test_transform_code(function_code):
-            raise ValueError("Código extraído é inválido ou falhou no teste.")
+        if not function_code:
+            save_bad_code(full_code, "Função ausente ou código inseguro")
+            raise ValueError("Código extraído inválido.")
+
+        if not test_transform_code(function_code):
+            save_bad_code(function_code, "Erro ao executar transform()")
+            raise ValueError("transform(grid) falhou no teste.")
 
         return function_code
 
