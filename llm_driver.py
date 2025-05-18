@@ -7,6 +7,7 @@ import os
 import time
 from collections import defaultdict
 import tensorflow as tf
+import hashlib
 
 # === Inicialização do Qwen ===
 
@@ -18,7 +19,7 @@ assert os.path.exists(model_path), "Modelo GGUF não encontrado."
 
 llm = Llama(
     model_path=model_path,
-    n_ctx=2048,  # aumente conforme a capacidade do modelo
+    n_ctx=2048,
     n_threads=8,
     n_gpu_layers=16,
     verbose=False
@@ -33,27 +34,45 @@ Input grid:
 Respond only with Python code. No explanations.
 """
 
+# === Utilitários ===
 
-def extract_transform_function(code: str) -> str:
+
+def hash_task_input(grid: list) -> str:
+    """Gera hash curto para o conteúdo do input grid."""
+    return hashlib.md5(json.dumps(grid).encode()).hexdigest()[:8]
+
+
+def extract_transform_function(code: str) -> str | None:
     """Isola e retorna somente a função transform(grid) se for segura."""
     match = re.search(
-        r"(def transform\(grid\):(.|\n)*?)(?=^def |\Z)", code, re.MULTILINE)
+        r"(def transform\(grid\):(?:\n|.)*?)(?=^def |\Z)", code, re.MULTILINE)
     if not match:
         print("[ERRO] Não foi possível encontrar a função transform.")
         return None
 
     func_code = match.group(1)
 
-    # Verifica por comandos perigosos ou baboseira fora da função
     blacklist = ["input(", "open(", "os.", "subprocess",
-                 "eval(", "exec(", "print("]
+                 "eval(", "exec(", "import ", "print("]
     for item in blacklist:
         if item in code and item not in func_code:
             print(
                 f"[ERRO] Código contém instrução insegura fora da função: {item}")
             return None
 
+    if "grid" not in func_code:
+        print("[ERRO] Código não utiliza o argumento `grid`.")
+        return None
+
     return func_code
+
+
+def looks_hardcoded(code: str, task_input: list) -> bool:
+    """Verifica se a saída está hardcoded no corpo da função."""
+    grid_flat = [str(n) for row in task_input for n in row]
+    sample = grid_flat[:6]
+    snippet = "".join(sample)
+    return snippet in code.replace("\n", "").replace(" ", "")
 
 
 def test_transform_code(code: str) -> bool:
@@ -78,11 +97,12 @@ def test_transform_code(code: str) -> bool:
         return False
 
 
-def save_bad_code(code: str, reason: str):
-    """Salva código defeituoso em um arquivo com a razão."""
+def save_bad_code(code: str, reason: str, grid: list):
+    """Salva código defeituoso com contexto e razão."""
     with open(".bad_llm.txt", "a", encoding="utf-8") as f:
         f.write("\n" + "=" * 60 + "\n")
         f.write(f"# Motivo: {reason}\n")
+        f.write(f"# Hash input: {hash_task_input(grid)}\n")
         f.write(code.strip() + "\n")
 
 
@@ -96,7 +116,7 @@ def prompt_llm(task_input: list, prompt_template: str) -> str:
         result = llm.create_chat_completion(
             messages=[
                 {"role": "system",
-                    "content": "Você é um solucionador de puzzles visuais do ARC."},
+                 "content": "Você é um solucionador de puzzles visuais do ARC."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.6
@@ -105,11 +125,18 @@ def prompt_llm(task_input: list, prompt_template: str) -> str:
         function_code = extract_transform_function(full_code)
 
         if not function_code:
-            save_bad_code(full_code, "Função ausente ou código inseguro")
+            save_bad_code(full_code, "Função ausente ou insegura", task_input)
             raise ValueError("Código extraído inválido.")
 
+        if looks_hardcoded(function_code, task_input):
+            print("[ERRO] Código suspeito de estar hardcoded com base no input.")
+            save_bad_code(
+                function_code, "Código hardcoded detectado", task_input)
+            raise ValueError("Código parece hardcoded.")
+
         if not test_transform_code(function_code):
-            save_bad_code(function_code, "Erro ao executar transform()")
+            save_bad_code(
+                function_code, "Erro ao executar transform()", task_input)
             raise ValueError("transform(grid) falhou no teste.")
 
         return function_code
@@ -120,4 +147,4 @@ def prompt_llm(task_input: list, prompt_template: str) -> str:
         return "def transform(grid): return grid"
 
 
-print("Ok")
+print("Qwen + SageAxiom driver inicializado com sanidade mínima.")
