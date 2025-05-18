@@ -13,6 +13,7 @@ import llm_driver
 
 import logging
 
+# === Logging Setup ===
 log_filename = f"log_arc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 logging.basicConfig(
     filename=log_filename,
@@ -30,6 +31,7 @@ def log(msg):
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+# === Hyperparâmetros ===
 EPOCHS = 40
 TARGET_TASKS = 21
 EXPECTED_HOURS = 1
@@ -73,6 +75,7 @@ if __name__ == "__main__":
     with open("arc-agi_test_challenges.json") as f:
         tasks = json.load(f)
 
+    # === Treinamento do SageAxiom ===
     log("[INFO] Preparando dados para treinamento do SageAxiom...")
     X_train_all, y_train_all = [], []
     for task in tasks.values():
@@ -112,13 +115,16 @@ if __name__ == "__main__":
     for k, v in history.history.items():
         log(f"  {k}: {[round(float(f), 4) for f in v]}")
 
+    # === Avaliação das tarefas ===
     log("[INFO] Começando avaliação de tarefas...")
-    for i, task_id in enumerate(tasks.keys()):
-        if total_tasks >= TARGET_TASKS or (time.time() - start_time) > TIME_LIMIT_MINUTES * 60:
-            log("[INFO] Tempo esgotado ou tarefas completas.")
+    task_iter = iter(tasks.items())
+
+    while (time.time() - start_time) < TIME_LIMIT_MINUTES * 60 and total_tasks < TARGET_TASKS:
+        try:
+            task_id, task = next(task_iter)
+        except StopIteration:
             break
 
-        task = tasks[task_id]
         input_grid = task["train"][0]["input"]
         expected_output = task["train"][0]["output"]
 
@@ -157,10 +163,9 @@ if __name__ == "__main__":
                     success = True
                     break
                 else:
-                    feedback = log(f"""
-                    A tentativa falhou. SageAxiom sugeriu a seguinte transformação:
-                    {fallback_output}
-                    log("[INFO] Feedback gerado para nova tentativa com Qwen.""")
+                    feedback = f"SageAxiom sugeriu a seguinte transformação: {fallback_output}"
+                    log(
+                        f"[INFO] Feedback gerado para nova tentativa com Qwen: {feedback}")
 
             attempt += 1
 
@@ -175,22 +180,24 @@ if __name__ == "__main__":
                     result_test = run_code(code_test, test_input)
                     if result_test["success"]:
                         submission_dict[task_id].append(result_test["output"])
-                        continue
-                except:
-                    pass
-
-                x_test = tf.convert_to_tensor(
-                    [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))], dtype=tf.int32)
-                x_onehot_test = tf.one_hot(x_test, depth=10, dtype=tf.float32)
-                y_pred_test = model(x_onehot_test, training=False)
-                pred_test = tf.argmax(
-                    y_pred_test["logits"][0], axis=-1).numpy().tolist()
-                submission_dict[task_id].append(pred_test)
+                    else:
+                        raise RuntimeError("Código falhou na execução.")
+                except Exception as e:
+                    log(f"[WARN] Qwen falhou no teste: {e}")
+                    x_test = tf.convert_to_tensor(
+                        [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))], dtype=tf.int32)
+                    x_onehot_test = tf.one_hot(
+                        x_test, depth=10, dtype=tf.float32)
+                    y_pred_test = model(x_onehot_test, training=False)
+                    pred_test = tf.argmax(
+                        y_pred_test["logits"][0], axis=-1).numpy().tolist()
+                    submission_dict[task_id].append(pred_test)
         else:
             log("[INFO] Task falhou completamente. Tristeza profunda.")
 
         total_tasks += 1
 
+    # === Finalização ===
     log("[INFO] Salvando resultados...")
     with open("submission.json", "w", encoding="utf-8") as f:
         json.dump(submission_dict, f, ensure_ascii=False)
@@ -198,6 +205,7 @@ if __name__ == "__main__":
     log("[INFO] Submissão salva: submission.json")
     log(f"[INFO] Tasks processadas: {total_tasks}")
     log(f"[INFO] Matches corretos: {correct_tasks}")
+
     if total_tasks > 0:
         estimated_score = correct_tasks / total_tasks * 100
         log(
