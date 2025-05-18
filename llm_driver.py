@@ -27,13 +27,14 @@ llm = Llama(
 )
 
 prompt_template = """
-Dado o seguinte grid de entrada (em JSON), escreva uma função Python chamada `transform(grid)` que gere a saída esperada do puzzle do ARC.
+Given the following input grid (in JSON), write a Python function named `transform(grid)` that produces the expected ARC puzzle output.
 
-Grid de entrada:
+Input grid:
 {grid}
 
-Responda apenas com código Python. Sem explicações.
+Respond only with Python code. No explanations.
 """
+
 
 def prompt_llm(task_input: list, prompt_template: str) -> str:
     prompt = prompt_template.format(grid=json.dumps(task_input))
@@ -50,8 +51,8 @@ def prompt_llm(task_input: list, prompt_template: str) -> str:
             raise ValueError("Resposta do LLM não contém 'transform'.")
         return code
     except Exception as e:
-        print(f"⚠️ Erro ao gerar código LLM: {e}")
-        print(f"📤 Resposta recebida do LLM:\n{code}")
+        print(f"[INFO] Erro ao gerar código LLM: {e}")
+        print(f"[INFO] Resposta recebida do LLM:\n{code}")
         return "def transform(grid): return grid"
 
 print("Ok")
