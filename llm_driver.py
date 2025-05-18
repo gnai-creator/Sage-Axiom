@@ -12,17 +12,17 @@ import tensorflow as tf
 # === Inicialização do Qwen ===
 
 # model_path = "/kaggle/input/qwen-3/gguf/32b-gguf/1/Qwen3-32B-Q4_K_M.gguf"
-model_path = os.path.expanduser("Qwen3-14B-Q4_K_M.gguf")
+model_path = os.path.expanduser("qwen2.5-1.5b-instruct-q4_k_m.gguf")
 if not os.path.exists(model_path):
-    model_path = os.path.expanduser("./Qwen3-14B-Q4_K_M.gguf")
+    model_path = os.path.expanduser("./qwen2.5-1.5b-instruct-q4_k_m.gguf")
     print(f"Modelo GGUF não encontrado em {model_path}. Verifique o caminho.")
 assert os.path.exists(model_path), "Modelo GGUF não encontrado."
 
 llm = Llama(
     model_path=model_path,
-    n_ctx=2048,
+    n_ctx=512,
     n_threads=8,
-    n_gpu_layers=35,
+    n_gpu_layers=16,
     verbose=False
 )
 
@@ -41,7 +41,8 @@ def prompt_llm(task_input: list, prompt_template: str) -> str:
     try:
         result = llm.create_chat_completion(
             messages=[
-                {"role": "system", "content": "Você é um solucionador de puzzles visuais do ARC."},
+                {"role": "system",
+                    "content": "Você é um solucionador de puzzles visuais do ARC."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3
@@ -54,5 +55,6 @@ def prompt_llm(task_input: list, prompt_template: str) -> str:
         print(f"[INFO] Erro ao gerar código LLM: {e}")
         print(f"[INFO] Resposta recebida do LLM:\n{code}")
         return "def transform(grid): return grid"
+
 
 print("Ok")

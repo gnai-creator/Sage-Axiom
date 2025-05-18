@@ -154,7 +154,7 @@ if __name__ == "__main__":
             y_pred = model(x_onehot, training=False)
             log("[{task_id}] Detalhamento de perdas:")
             for name, value in model.last_losses.items():
-                log(f"  - {name}: {value.numpy():.6f}")
+                log("  - {name}: {value}")
             log("[INFO] Predição SageAxiom: {y_pred['logits'][0].numpy()}")
             log("[INFO] Shape do input: {x_onehot.shape}")
             log(
