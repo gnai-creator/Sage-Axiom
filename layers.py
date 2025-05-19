@@ -1,13 +1,10 @@
-# layers.py
-
 import tensorflow as tf
 import tensorflow.keras as layers
-
 
 class TokenEmbedding(tf.keras.layers.Layer):
     def __init__(self, vocab_size=10, dim=64):
         super().__init__()
-        self.embed_layer = tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=dim)
+        self.embed_layer = tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=dim, name="token_embedding")
 
     def call(self, x):
         if x.shape.rank != 4:
@@ -30,9 +27,9 @@ class OutputRefinement(tf.keras.layers.Layer):
     def __init__(self, hidden_dim):
         super().__init__()
         self.refine = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.Conv2D(10, 1)
+            tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu', name="refine_conv1"),
+            tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu', name="refine_conv2"),
+            tf.keras.layers.Conv2D(10, 1, name="refine_output")
         ])
 
     def call(self, x):
@@ -41,7 +38,7 @@ class OutputRefinement(tf.keras.layers.Layer):
 class PositionalEncoding2D(tf.keras.layers.Layer):
     def __init__(self, channels):
         super().__init__()
-        self.dense = tf.keras.layers.Dense(channels, activation='tanh')
+        self.dense = tf.keras.layers.Dense(channels, activation='tanh', name="positional_dense")
 
     def call(self, x):
         b, h, w = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2]
@@ -57,10 +54,10 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
 class FractalEncoder(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.branch3 = tf.keras.layers.Conv2D(dim // 2, kernel_size=3, padding='same', activation='relu')
-        self.branch5 = tf.keras.layers.Conv2D(dim // 2, kernel_size=5, padding='same', activation='relu')
-        self.merge = tf.keras.layers.Conv2D(dim, kernel_size=1, padding='same', activation='relu')
-        self.residual = tf.keras.layers.Conv2D(dim, kernel_size=1, padding='same')
+        self.branch3 = tf.keras.layers.Conv2D(dim // 2, kernel_size=3, padding='same', activation='relu', name="fractal_branch3")
+        self.branch5 = tf.keras.layers.Conv2D(dim // 2, kernel_size=5, padding='same', activation='relu', name="fractal_branch5")
+        self.merge = tf.keras.layers.Conv2D(dim, kernel_size=1, padding='same', activation='relu', name="fractal_merge")
+        self.residual = tf.keras.layers.Conv2D(dim, kernel_size=1, padding='same', name="fractal_residual")
 
     def call(self, x):
         b3 = self.branch3(x)
@@ -73,9 +70,9 @@ class FractalEncoder(tf.keras.layers.Layer):
 class FractalBlock(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.conv = tf.keras.layers.Conv2D(dim, kernel_size=3, padding='same', activation='relu')
-        self.bn = tf.keras.layers.BatchNormalization()
-        self.skip = tf.keras.layers.Conv2D(dim, kernel_size=1, padding='same')
+        self.conv = tf.keras.layers.Conv2D(dim, kernel_size=3, padding='same', activation='relu', name="fractalblock_conv")
+        self.bn = tf.keras.layers.BatchNormalization(name="fractalblock_bn")
+        self.skip = tf.keras.layers.Conv2D(dim, kernel_size=1, padding='same', name="fractalblock_skip")
 
     def call(self, x, training=False):
         out = self.conv(x)
@@ -86,7 +83,7 @@ class FractalBlock(tf.keras.layers.Layer):
 class MultiHeadAttentionWrapper(tf.keras.layers.Layer):
     def __init__(self, dim, heads=8):
         super().__init__()
-        self.attn = tf.keras.layers.MultiHeadAttention(num_heads=heads, key_dim=dim // heads)
+        self.attn = tf.keras.layers.MultiHeadAttention(num_heads=heads, key_dim=dim // heads, name="multihead_attention")
 
     def call(self, x):
         return self.attn(query=x, value=x, key=x)
@@ -110,15 +107,15 @@ class ChoiceHypothesisModule(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
         self.meander = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(dim, 1, activation='relu'),
-            tf.keras.layers.Conv2D(dim, 1)
+            tf.keras.layers.Conv2D(dim, 1, activation='relu', name="meander_conv1"),
+            tf.keras.layers.Conv2D(dim, 1, name="meander_conv2")
         ])
-        self.input_proj = tf.keras.layers.Conv2D(dim, 1, activation='relu')
-        self.h1 = tf.keras.layers.Conv2D(dim, 1, activation='relu')
-        self.h2 = tf.keras.layers.Conv2D(dim, 1, activation='relu')
-        self.h3 = tf.keras.layers.Conv2D(dim, 1, activation='relu')
-        self.h4 = tf.keras.layers.Conv2D(dim, 1, activation='relu')
-        self.selector = tf.keras.layers.Dense(5, activation='softmax')
+        self.input_proj = tf.keras.layers.Conv2D(dim, 1, activation='relu', name="chm_input_proj")
+        self.h1 = tf.keras.layers.Conv2D(dim, 1, activation='relu', name="chm_h1")
+        self.h2 = tf.keras.layers.Conv2D(dim, 1, activation='relu', name="chm_h2")
+        self.h3 = tf.keras.layers.Conv2D(dim, 1, activation='relu', name="chm_h3")
+        self.h4 = tf.keras.layers.Conv2D(dim, 1, activation='relu', name="chm_h4")
+        self.selector = tf.keras.layers.Dense(5, activation='softmax', name="chm_selector")
 
     def call(self, x, hard=False):
         x = self.input_proj(x)
@@ -138,9 +135,9 @@ class ChoiceHypothesisModule(tf.keras.layers.Layer):
 class AttentionOverMemory(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.query_proj = tf.keras.layers.Dense(dim)
-        self.key_proj = tf.keras.layers.Dense(dim)
-        self.value_proj = tf.keras.layers.Dense(dim)
+        self.query_proj = tf.keras.layers.Dense(dim, name="aom_query_proj")
+        self.key_proj = tf.keras.layers.Dense(dim, name="aom_key_proj")
+        self.value_proj = tf.keras.layers.Dense(dim, name="aom_value_proj")
 
     def call(self, memory, query):
         q = self.query_proj(query)[:, tf.newaxis, :]
@@ -157,7 +154,7 @@ class EnhancedEncoder(tf.keras.layers.Layer):
             FractalBlock(dim),
             FractalBlock(dim),
             FractalBlock(dim),
-            tf.keras.layers.Conv2D(dim, 3, padding='same', activation='relu')
+            tf.keras.layers.Conv2D(dim, 3, padding='same', activation='relu', name="encoder_output")
         ]
 
     def call(self, x, training=False):
