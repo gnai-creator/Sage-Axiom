@@ -7,13 +7,16 @@ import numpy as np
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
 from core import SageAxiom
-import llm_driver
 from functions import *
 from agent_chat import *
-import matplotlib.pyplot as plt
+from metrics_utils import (
+    plot_history,
+    plot_confusion,
+    plot_attempts_stats,
+    profile_time,
+    log
+)
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-import seaborn as sns
-from sklearn.metrics import classification_report, confusion_matrix
 
 # === Hiperparâmetros e limites ===
 LEARNING_RATE = 0.001
@@ -50,43 +53,27 @@ y_train = tf.convert_to_tensor(y_train, dtype=tf.int32)
 y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
 
 # === Treinamento ===
-os.makedirs("checkpoints", exist_ok=True)
-checkpoint = ModelCheckpoint("checkpoints/sage_axiom", monitor="val_loss", save_best_only=True, save_format="tf", verbose=1)
-early_stop = EarlyStopping(monitor="val_loss", patience=15, restore_best_weights=True)
-lr_schedule = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-5, verbose=1)
+models = []
+for i in range(3):
+    log(f"[INFO] Iniciando treino do modelo SageAxiom_{i+1}...")
+    model = SageAxiom(hidden_dim=128, use_hard_choice=False)
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss=None, metrics=[])
 
-model = SageAxiom(hidden_dim=128, use_hard_choice=False)
-model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss=None, metrics=[])
+    dummy_x = tf.random.uniform((1, 30, 30, 10))
+    dummy_text = model.embed_text(["dummy input"])
+    _ = model(dummy_x, text_embed=dummy_text, training=False)
 
-# Builda modelo completo (inclusive rota do texto)
-dummy_x = tf.random.uniform((1, 30, 30, 10))
-dummy_text = model.embed_text(["dummy input"])
-_ = model(dummy_x, text_embed=dummy_text, training=False)
+    os.makedirs(f"checkpoints/sage_axiom_{i+1}", exist_ok=True)
+    checkpoint = ModelCheckpoint(f"checkpoints/sage_axiom_{i+1}/model", monitor="val_loss", save_best_only=True, save_format="tf", verbose=1)
+    early_stop = EarlyStopping(monitor="val_loss", patience=15, restore_best_weights=True)
+    lr_schedule = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-5, verbose=1)
 
-model.save("meu_modelo", save_format="tf")
-train_start = time.time()
-history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1, callbacks=[checkpoint, early_stop, lr_schedule])
-training_duration = profile_time(train_start, "Tempo de treinamento")
-
-plot_history(history)
-y_val_pred = tf.argmax(model(X_val, training=False)["logits"], axis=-1).numpy()
-plot_confusion(y_val.numpy(), y_val_pred)
-
-# === Avaliação por classe ===
-y_true_flat = y_val.numpy().flatten()
-y_pred_flat = y_val_pred.flatten()
-cm = confusion_matrix(y_true_flat, y_pred_flat, labels=list(range(10)))
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=range(10), yticklabels=range(10))
-plt.title("SageAxiom Confusion Matrix")
-plt.xlabel("Predicted")
-plt.ylabel("True")
-plt.tight_layout()
-plt.savefig("confusion_matrix.png")
-report = classification_report(y_true_flat, y_pred_flat, labels=list(range(10)), output_dict=True)
-with open("per_class_metrics.json", "w") as f:
-    json.dump(report, f, indent=2)
-log("[INFO] Avaliação por classe salva em confusion_matrix.png e per_class_metrics.json")
+    history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1, callbacks=[checkpoint, early_stop, lr_schedule])
+    model.save(f"sage_model_{i+1}", save_format="tf")
+    plot_history(history)
+    y_val_pred = tf.argmax(model(X_val, training=False)["logits"], axis=-1).numpy()
+    plot_confusion(y_val.numpy(), y_val_pred)
+    models.append(model)
 
 # === Avaliação ===
 submission_dict = defaultdict(list)
@@ -96,84 +83,45 @@ task_times = {}
 attempts_per_task = {}
 scores = []
 task_ids = []
+model_vote_stats = {"model_1": 0, "model_2": 0, "model_3": 0}
 
 os.makedirs("history_prompts", exist_ok=True)
-with open("history_prompts/history_all.csv", "w", newline="") as csvfile:
-    csv_writer = csv.DictWriter(csvfile, fieldnames=["task_id", "attempt", "feedback", "code"])
-    csv_writer.writeheader()
 
-    for task_id, task in list(tasks.items())[:TARGET_TASKS]:
-        task_start = time.time()
-        input_grid = task["train"][0]["input"]
-        expected_output = task["train"][0]["output"]
+for task_id, task in list(tasks.items())[:TARGET_TASKS]:
+    task_start = time.time()
+    input_grid = task["train"][0]["input"]
+    log(f"[INFO] Avaliando task {task_id} ({total_tasks + 1}/{TARGET_TASKS})")
 
-        x = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
-        x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
+    result = triple_conversational_loop(models, input_grid)
 
-        feedback = None
-        attempt = 0
-        success = False
-        predicted = None
-        historyPrompt = []
-        log(f"[INFO] Avaliando task {task_id} ({total_tasks + 1}/{TARGET_TASKS})")
+    if result["success"]:
+        correct_tasks += 1
+    submission_dict[task_id] = [result["output"]] if result["output"] else []
 
-        while (time.time() - task_start) < SECONDS_PER_TASK and not success:
-            result = conversational_loop(
-                model=model,
-                prompt_fn=prompt_from_grid,
-                input_grid=input_grid,
-                expected_output=expected_output
-            )
+    with open(f"history_prompts/{task_id}.json", "w") as f:
+        json.dump(result["history"], f, indent=2)
 
-            success = result["success"]
-            predicted = result["predicted"]
-            feedback = result["feedback"]
-            attempt = result["attempt"]
-            historyPrompt = result["history"]
+    with open(f"history_prompts/{task_id}.md", "w", encoding="utf-8") as md:
+        md.write(f"# Histórico da Task {task_id}\n\n")
+        for round_num, entry in enumerate(result["history"], 1):
+            md.write(f"## Rodada {round_num}\n")
+            md.write(f"\n**Entradas**\n\n")
+            for model_idx, candidate in enumerate(entry["candidates"]):
+                md.write(f"### Modelo {model_idx+1}\n\n")
+                md.write("```python\n")
+                md.write(candidate + "\n")
+                md.write("```\n\n")
+            md.write(f"**Votos**: {entry['votes']}\n\n")
+            md.write(f"**Ganhador**: Modelo {entry['winner']}\n\n")
+            model_vote_stats[f"model_{entry['winner']}"] += 1
 
-        attempts_per_task[task_id] = attempt
-        if success:
-            correct_tasks += 1
-            for t in task["test"]:
-                test_input = t["input"]
-                try:
-                    test_code = llm_driver.prompt_llm(test_input, None)
-                    test_result = run_code(test_code, test_input)
-                    if test_result["success"]:
-                        submission_dict[task_id].append(test_result["output"])
-                        continue
-                except:
-                    pass
-                x_test = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))])
-                x_onehot_test = tf.one_hot(x_test, depth=10, dtype=tf.float32)
-                text_prompt = prompt_from_grid(test_input)
-                y_pred_test = model.from_prompt_and_grid(text_prompt, x_onehot_test)
-                pred_test = tf.argmax(y_pred_test["logits"][0], axis=-1).numpy().tolist()
-                submission_dict[task_id].append(pred_test)
+    task_times[task_id] = profile_time(task_start, f"Task {task_id}")
+    attempts_per_task[task_id] = result["rounds"]
+    total_tasks += 1
+    task_ids.append(task_id)
+    scores.append(int(result["success"]))
 
-        with open(f"history_prompts/{task_id}.json", "w") as f:
-            json.dump(historyPrompt, f, indent=2)
-
-        with open(f"history_prompts/{task_id}.md", "w", encoding="utf-8") as mdfile:
-            mdfile.write(f"# Histórico da Task {task_id}\n\n")
-            for item in historyPrompt:
-                mdfile.write(f"## Tentativa {item['turn']}\n")
-                mdfile.write("```python\n")
-                mdfile.write(item['code'] + "\n")
-                mdfile.write("```\n\n")
-                mdfile.write(f"**Feedback:** {item['feedback']}\n\n")
-
-        for item in historyPrompt:
-            item_flat = item.copy()
-            item_flat["task_id"] = task_id
-            item_flat["attempt"] = item_flat.pop("turn", None)
-            csv_writer.writerow(item_flat)
-
-        task_times[task_id] = profile_time(task_start, f"Task {task_id}")
-        total_tasks += 1
-        task_ids.append(task_id)
-        scores.append(int(success))
-
+# === Resultados finais ===
 with open("submission.json", "w") as f:
     json.dump(submission_dict, f, ensure_ascii=False)
 
@@ -181,40 +129,10 @@ with open("per_task_times.json", "w") as f:
     json.dump(task_times, f, indent=2)
 
 plot_attempts_stats(task_times, attempts_per_task)
-
-
-def plot_success_by_task(task_ids, scores):
-    plt.figure(figsize=(10, 4))
-    plt.bar(task_ids, scores, color="green")
-    plt.xlabel("Task ID")
-    plt.ylabel("Sucesso (1 = acerto, 0 = erro)")
-    plt.title("Acertos por Task")
-    plt.xticks(rotation=90)
-    plt.tight_layout()
-    plt.savefig("history_prompts/task_success_bar.png")
-    plt.close()
-
-
-def plot_engagement_bar(attempts_dict):
-    plt.figure(figsize=(10, 4))
-    tasks = list(attempts_dict.keys())
-    attempts = [attempts_dict[k] for k in tasks]
-    plt.bar(tasks, attempts, color="skyblue")
-    plt.xlabel("Task ID")
-    plt.ylabel("Tentativas")
-    plt.title("Engajamento por Task (nº de tentativas)")
-    plt.xticks(rotation=90)
-    plt.tight_layout()
-    plt.savefig("history_prompts/task_engagement_bar.png")
-    plt.close()
-
-
-plot_success_by_task(task_ids, scores)
-plot_engagement_bar(attempts_per_task)
-
 log(f"[INFO] Matches corretos: {correct_tasks}/{total_tasks}")
 score = (correct_tasks / total_tasks) * 100
 log(f"[INFO] Score estimado: {score:.2f}%")
 projection = (correct_tasks / 250) * 100
 log(f"[INFO] Projeção final aproximada: {projection:.2f}%")
+log(f"[INFO] Votos por modelo: {model_vote_stats}")
 log("[INFO] Pipeline encerrado.")
