@@ -8,11 +8,11 @@ import hashlib
 import random
 
 # === Inicialização do modelo Qwen ===
-model_path = os.path.expanduser("qwen2.5-3b-instruct-q4_k_m.gguf")
-if not os.path.exists(model_path):
-    model_path = os.path.expanduser("./qwen2.5-3b-instruct-q4_k_m.gguf")
-    print(f"Modelo GGUF não encontrado em {model_path}.")
-assert os.path.exists(model_path), "Modelo GGUF não encontrado."
+import glob
+model_candidates = glob.glob("./*.gguf")
+assert model_candidates, "Nenhum arquivo .gguf encontrado no diretório."
+model_path = model_candidates[0]
+
 
 llm = Llama(
     model_path=model_path,

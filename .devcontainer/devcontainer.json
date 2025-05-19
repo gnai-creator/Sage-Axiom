@@ -1,0 +1,13 @@
+{
+  "name": "TensorFlow + Llama + GPU",
+  "image": "tensorflow/tensorflow:2.15.0-gpu",
+  "runArgs": [
+    "--gpus", "all"
+  ],
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind"
+  ],
+  "postCreateCommand": "apt update && apt install -y git build-essential cmake python3-dev python3-pip && pip install --upgrade pip setuptools wheel && pip install scikit-learn pandas matplotlib seaborn numpy transformers huggingface_hub && pip install llama-cpp-python --extra-index-url=https://abetlen.github.io/llama-cpp-python/cu118"
+
+}
