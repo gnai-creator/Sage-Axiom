@@ -1,0 +1,8 @@
+[06:48:03] INFO: [INFO] Preparando dados do SageAxiom...
+[06:48:08] INFO: Assets written to: meu_modelo/assets
+[06:48:09] WARNING: Gradients do not exist for variables ['dense/kernel:0', 'dense/bias:0'] when minimizing the loss. If you're using `model.compile()`, did you forget to provide a `loss` argument?
+[06:48:09] WARNING: Gradients do not exist for variables ['dense/kernel:0', 'dense/bias:0'] when minimizing the loss. If you're using `model.compile()`, did you forget to provide a `loss` argument?
+[06:48:10] WARNING: Gradients do not exist for variables ['dense/kernel:0', 'dense/bias:0'] when minimizing the loss. If you're using `model.compile()`, did you forget to provide a `loss` argument?
+[06:48:10] WARNING: Gradients do not exist for variables ['dense/kernel:0', 'dense/bias:0'] when minimizing the loss. If you're using `model.compile()`, did you forget to provide a `loss` argument?
+[06:48:23] INFO: Assets written to: checkpoints/sage_axiom/assets
+[06:48:30] INFO: Assets written to: checkpoints/sage_axiom/assets

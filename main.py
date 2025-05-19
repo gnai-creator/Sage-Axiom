@@ -11,11 +11,14 @@ import llm_driver
 from functions import *
 from agent_chat import *
 import matplotlib.pyplot as plt
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+import seaborn as sns
+from sklearn.metrics import classification_report, confusion_matrix
 
 # === Hiperparâmetros e limites ===
 LEARNING_RATE = 0.001
 BATCH_SIZE = 64
-EPOCHS = 40
+EPOCHS = 140
 TARGET_TASKS = 21
 EXPECTED_HOURS = 2.5
 TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
@@ -29,10 +32,8 @@ log("[INFO] Preparando dados do SageAxiom...")
 X_train_all, y_train_all = [], []
 for task in tasks.values():
     for pair in task["train"]:
-        input_grid = pad_to_shape(
-            tf.convert_to_tensor(pair["input"], dtype=tf.int32))
-        output_grid = pad_to_shape(
-            tf.convert_to_tensor(pair["output"], dtype=tf.int32))
+        input_grid = pad_to_shape(tf.convert_to_tensor(pair["input"], dtype=tf.int32))
+        output_grid = pad_to_shape(tf.convert_to_tensor(pair["output"], dtype=tf.int32))
         X_train_all.append(input_grid)
         y_train_all.append(output_grid)
 
@@ -49,18 +50,43 @@ y_train = tf.convert_to_tensor(y_train, dtype=tf.int32)
 y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
 
 # === Treinamento ===
+os.makedirs("checkpoints", exist_ok=True)
+checkpoint = ModelCheckpoint("checkpoints/sage_axiom", monitor="val_loss", save_best_only=True, save_format="tf", verbose=1)
+early_stop = EarlyStopping(monitor="val_loss", patience=15, restore_best_weights=True)
+lr_schedule = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-5, verbose=1)
+
 model = SageAxiom(hidden_dim=128, use_hard_choice=False)
-model.compile(optimizer=tf.keras.optimizers.Adam(
-    learning_rate=LEARNING_RATE), loss=None, metrics=[])
-model(X_train[:1])
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss=None, metrics=[])
+
+# Builda modelo completo (inclusive rota do texto)
+dummy_x = tf.random.uniform((1, 30, 30, 10))
+dummy_text = model.embed_text(["dummy input"])
+_ = model(dummy_x, text_embed=dummy_text, training=False)
+
+model.save("meu_modelo", save_format="tf")
 train_start = time.time()
-history = model.fit(X_train, y_train, validation_data=(
-    X_val, y_val), epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
+history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1, callbacks=[checkpoint, early_stop, lr_schedule])
 training_duration = profile_time(train_start, "Tempo de treinamento")
 
 plot_history(history)
 y_val_pred = tf.argmax(model(X_val, training=False)["logits"], axis=-1).numpy()
 plot_confusion(y_val.numpy(), y_val_pred)
+
+# === Avaliação por classe ===
+y_true_flat = y_val.numpy().flatten()
+y_pred_flat = y_val_pred.flatten()
+cm = confusion_matrix(y_true_flat, y_pred_flat, labels=list(range(10)))
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=range(10), yticklabels=range(10))
+plt.title("SageAxiom Confusion Matrix")
+plt.xlabel("Predicted")
+plt.ylabel("True")
+plt.tight_layout()
+plt.savefig("confusion_matrix.png")
+report = classification_report(y_true_flat, y_pred_flat, labels=list(range(10)), output_dict=True)
+with open("per_class_metrics.json", "w") as f:
+    json.dump(report, f, indent=2)
+log("[INFO] Avaliação por classe salva em confusion_matrix.png e per_class_metrics.json")
 
 # === Avaliação ===
 submission_dict = defaultdict(list)
@@ -71,11 +97,9 @@ attempts_per_task = {}
 scores = []
 task_ids = []
 
-
 os.makedirs("history_prompts", exist_ok=True)
 with open("history_prompts/history_all.csv", "w", newline="") as csvfile:
-    csv_writer = csv.DictWriter(
-        csvfile, fieldnames=["task_id", "attempt", "feedback", "code"])
+    csv_writer = csv.DictWriter(csvfile, fieldnames=["task_id", "attempt", "feedback", "code"])
     csv_writer.writeheader()
 
     for task_id, task in list(tasks.items())[:TARGET_TASKS]:
@@ -83,8 +107,7 @@ with open("history_prompts/history_all.csv", "w", newline="") as csvfile:
         input_grid = task["train"][0]["input"]
         expected_output = task["train"][0]["output"]
 
-        x = tf.convert_to_tensor(
-            [pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
+        x = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
         x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
 
         feedback = None
@@ -94,7 +117,6 @@ with open("history_prompts/history_all.csv", "w", newline="") as csvfile:
         historyPrompt = []
         log(f"[INFO] Avaliando task {task_id} ({total_tasks + 1}/{TARGET_TASKS})")
 
-        # Loop conversacional com tempo limite
         while (time.time() - task_start) < SECONDS_PER_TASK and not success:
             result = conversational_loop(
                 model=model,
@@ -107,29 +129,26 @@ with open("history_prompts/history_all.csv", "w", newline="") as csvfile:
             predicted = result["predicted"]
             feedback = result["feedback"]
             attempt = result["attempt"]
+            historyPrompt = result["history"]
 
-        attempts_per_task[task_id] = attempt + 1
+        attempts_per_task[task_id] = attempt
         if success:
             correct_tasks += 1
             for t in task["test"]:
                 test_input = t["input"]
                 try:
-                    test_code = llm_driver.prompt_llm(
-                        test_input, llm_driver.prompt_template)
+                    test_code = llm_driver.prompt_llm(test_input, None)
                     test_result = run_code(test_code, test_input)
                     if test_result["success"]:
                         submission_dict[task_id].append(test_result["output"])
                         continue
                 except:
                     pass
-                x_test = tf.convert_to_tensor(
-                    [pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))])
+                x_test = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(test_input, dtype=tf.int32))])
                 x_onehot_test = tf.one_hot(x_test, depth=10, dtype=tf.float32)
                 text_prompt = prompt_from_grid(test_input)
-                y_pred_test = model.from_prompt_and_grid(
-                    text_prompt, x_onehot_test)
-                pred_test = tf.argmax(
-                    y_pred_test["logits"][0], axis=-1).numpy().tolist()
+                y_pred_test = model.from_prompt_and_grid(text_prompt, x_onehot_test)
+                pred_test = tf.argmax(y_pred_test["logits"][0], axis=-1).numpy().tolist()
                 submission_dict[task_id].append(pred_test)
 
         with open(f"history_prompts/{task_id}.json", "w") as f:
@@ -138,7 +157,7 @@ with open("history_prompts/history_all.csv", "w", newline="") as csvfile:
         with open(f"history_prompts/{task_id}.md", "w", encoding="utf-8") as mdfile:
             mdfile.write(f"# Histórico da Task {task_id}\n\n")
             for item in historyPrompt:
-                mdfile.write(f"## Tentativa {item['attempt']}\n")
+                mdfile.write(f"## Tentativa {item['turn']}\n")
                 mdfile.write("```python\n")
                 mdfile.write(item['code'] + "\n")
                 mdfile.write("```\n\n")
@@ -147,6 +166,7 @@ with open("history_prompts/history_all.csv", "w", newline="") as csvfile:
         for item in historyPrompt:
             item_flat = item.copy()
             item_flat["task_id"] = task_id
+            item_flat["attempt"] = item_flat.pop("turn", None)
             csv_writer.writerow(item_flat)
 
         task_times[task_id] = profile_time(task_start, f"Task {task_id}")
@@ -154,7 +174,6 @@ with open("history_prompts/history_all.csv", "w", newline="") as csvfile:
         task_ids.append(task_id)
         scores.append(int(success))
 
-# === Resultados finais ===
 with open("submission.json", "w") as f:
     json.dump(submission_dict, f, ensure_ascii=False)
 
@@ -162,8 +181,6 @@ with open("per_task_times.json", "w") as f:
     json.dump(task_times, f, indent=2)
 
 plot_attempts_stats(task_times, attempts_per_task)
-
-# === Novo: Gráficos ===
 
 
 def plot_success_by_task(task_ids, scores):

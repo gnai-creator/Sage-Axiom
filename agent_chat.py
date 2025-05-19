@@ -1,16 +1,13 @@
+import json
+from functions import run_code, compare_outputs, describe_diff, log
 from llm_driver import prompt_llm
-import json
-from llm_driver import *
-from functions import *
-import json
-
 
 
 def prompt_from_grid(input_grid, history=None):
     return f"Input grid:\n{json.dumps(input_grid)}"
 
 
-def generate_code_from_qwen(input_grid, history=None, feedback=None, expected_output=None):
+def generate_code_from_qwen(input_grid, history=None, feedback=None, expected_output=None, temperature=0.7):
     return prompt_llm(
         task_input=input_grid,
         feedback=feedback,
@@ -19,16 +16,18 @@ def generate_code_from_qwen(input_grid, history=None, feedback=None, expected_ou
     )
 
 
-def qwen_propose(prompt_fn, input_grid, history):
+def qwen_propose(prompt_fn, input_grid, history, temperature):
     feedback = history[-1]["feedback"] if history else None
     code = generate_code_from_qwen(
         input_grid,
         history=history,
-        feedback=feedback
+        feedback=feedback,
+        temperature=temperature
     )
     log(f"""[QWEN] Código gerado na tentativa {len(history)+1}:
 {code}""")
     return code
+
 
 def sage_feedback(model, input_grid, expected_output, code_suggestion):
     result = run_code(code_suggestion, input_grid)
@@ -43,6 +42,7 @@ def sage_feedback(model, input_grid, expected_output, code_suggestion):
     log("[SAGE] Erro ao executar o código sugerido.")
     return "Erro ao executar o código sugerido.", False
 
+
 def conversational_loop(model, prompt_fn, input_grid, expected_output, max_turns=3):
     history = []
     success = False
@@ -50,13 +50,26 @@ def conversational_loop(model, prompt_fn, input_grid, expected_output, max_turns
 
     for turn in range(max_turns):
         log(f"[LOOP] Iniciando tentativa {turn+1}...")
-        code = qwen_propose(prompt_fn, input_grid, history)
+
+        temperature = 0.5 + 0.2 * turn  # decaying/raising temperature strategy
+        code = qwen_propose(prompt_fn, input_grid, history, temperature)
+
+        if "raise NotImplementedError" in code:
+            log("[LOOP] Função descartada automaticamente. Pulando para próxima tentativa.")
+            history.append({
+                "turn": turn + 1,
+                "code": code,
+                "feedback": "Função descartada automaticamente."
+            })
+            continue
+
         feedback, success = sage_feedback(model, input_grid, expected_output, code)
         history.append({
             "turn": turn + 1,
             "code": code,
             "feedback": feedback
         })
+
         if success:
             log(f"[LOOP] Sucesso alcançado na tentativa {turn+1}.")
             break

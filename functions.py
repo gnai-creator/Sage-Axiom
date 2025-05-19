@@ -43,11 +43,14 @@ def run_code(code: str, input_matrix: list) -> dict:
         return {"success": False, "error": str(e), "traceback": traceback.format_exc(limit=1)}
 
 
-def compare_outputs(predicted, expected) -> bool:
+def compare_outputs(out1, out2):
     try:
-        return np.array_equal(np.array(predicted), np.array(expected))
-    except Exception:
+        a = np.array(out1)
+        b = np.array(out2)
+        return a.shape == b.shape and np.allclose(a, b, atol=1e-3)
+    except:
         return False
+
 
 
 def describe_diff(input_grid, output_grid):
