@@ -104,8 +104,10 @@ for i in range(NUMBER_OF_MODELS):
 
     # Força build antes de salvar para evitar warnings de camadas não construídas
     # dummy embed com o shape certo
-    dummy_embed = tf.random.uniform((1, 128))
-    _ = model(tf.random.uniform((1, 30, 30, 10)), text_embed=dummy_embed)
+    dummy_input = tf.random.uniform((1, 30, 30, 10))
+    dummy_text_embed = tf.random.uniform((1, 128))
+    _ = model(dummy_input, text_embed=dummy_text_embed)
+
     model.save(f"sage_model_{i+1}", save_format="tf")
 
     plot_history(history, i)
