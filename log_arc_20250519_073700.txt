@@ -1,6 +1,0 @@
-[07:37:00] INFO: [INFO] Preparando dados do SageAxiom...
-[07:37:00] INFO: [INFO] Iniciando treino do modelo SageAxiom_1...
-[07:37:03] WARNING: Gradients do not exist for variables ['dense/kernel:0', 'dense/bias:0'] when minimizing the loss. If you're using `model.compile()`, did you forget to provide a `loss` argument?
-[07:37:03] WARNING: Gradients do not exist for variables ['dense/kernel:0', 'dense/bias:0'] when minimizing the loss. If you're using `model.compile()`, did you forget to provide a `loss` argument?
-[07:37:04] WARNING: Gradients do not exist for variables ['dense/kernel:0', 'dense/bias:0'] when minimizing the loss. If you're using `model.compile()`, did you forget to provide a `loss` argument?
-[07:37:04] WARNING: Gradients do not exist for variables ['dense/kernel:0', 'dense/bias:0'] when minimizing the loss. If you're using `model.compile()`, did you forget to provide a `loss` argument?

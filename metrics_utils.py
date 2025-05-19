@@ -1,3 +1,5 @@
+# metrics_utils.py
+
 import os
 import json
 import time
@@ -6,10 +8,10 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, classification_report
+from runtime_utils import log, pad_to_shape
 
 
-
-def plot_history(history):
+def plot_history(history, model_name):
     plt.figure(figsize=(10, 5))
     for key in history.history:
         plt.plot(history.history[key], label=key)
@@ -19,11 +21,11 @@ def plot_history(history):
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("training_plot.png")
+    plt.savefig(f"training_plot {model_name}.png")
     log("[INFO] Plot do treinamento salvo: training_plot.png")
 
 
-def plot_confusion(y_true, y_pred):
+def plot_confusion(y_true, y_pred, model_name):
     y_true_flat = np.array(y_true).flatten()
     y_pred_flat = np.array(y_pred).flatten()
     cm = confusion_matrix(y_true_flat, y_pred_flat, labels=list(range(10)))
@@ -34,7 +36,7 @@ def plot_confusion(y_true, y_pred):
     plt.xlabel("Predicted")
     plt.ylabel("True")
     plt.tight_layout()
-    plt.savefig("confusion_matrix.png")
+    plt.savefig(f"confusion_matrix {model_name}.png")
     log("[INFO] Matriz de confusão salva: confusion_matrix.png")
 
     report = classification_report(
