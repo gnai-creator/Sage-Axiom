@@ -3,7 +3,6 @@ from transformers import BertTokenizer, TFBertModel
 from layers import *
 from utils import (
     temporal_symmetry_loss,
-    compute_all_losses,
     BoundingBoxDiscipline
 )
 
@@ -34,7 +33,6 @@ class SageAxiom(tf.keras.Model):
         self.longterm = LongTermMemory(
             memory_size=128, embedding_dim=hidden_dim)
         self.chooser = ChoiceHypothesisModule(hidden_dim)
-        self.pain_system = TaskPainSystem(latent_dim=hidden_dim)
         self.attend_memory = AttentionOverMemory(hidden_dim)
 
         self.projector = tf.keras.layers.Conv2D(hidden_dim, 1)
@@ -158,18 +156,16 @@ class SageAxiom(tf.keras.Model):
 
         expected = tf.one_hot(tf.cast(y_seq, tf.int32),
                               depth=10, dtype=tf.float32)
-        pain = self.pain_system(final_logits, expected,
-                                blended, training=training)
-        loss_dict = compute_all_losses(
-            final_logits, y_seq, blended, pain["pain"])
-        total_loss = tf.add_n(list(loss_dict.values()))
+        cross_entropy = tf.keras.losses.categorical_crossentropy(
+            expected, final_logits, from_logits=True)
+        loss = tf.reduce_mean(cross_entropy)
 
         if training:
-            total_loss += 0.01 * \
+            loss += 0.01 * \
                 temporal_symmetry_loss(tf.expand_dims(final_logits, axis=1))
 
-        self.add_loss(total_loss)
-        return {"logits": final_logits, "loss": total_loss}
+        self.add_loss(loss)
+        return {"logits": final_logits, "loss": loss}
 
     @property
     def metrics(self):

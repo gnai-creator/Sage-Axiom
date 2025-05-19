@@ -1,3 +1,4 @@
+# llm_driver.py
 from llama_cpp import Llama
 import re
 import os
@@ -5,37 +6,29 @@ import json
 import difflib
 import hashlib
 import random
-prompt_template = """
-Given the following input grid (in JSON), write a Python function named `transform(grid)` that produces the expected ARC puzzle output.
-
-Input grid:
-{grid}
-
-Respond only with Python code. No explanations.
-"""
-
 
 # === Inicialização do modelo Qwen ===
-model_path = os.path.expanduser("qwen2.5-1.5b-instruct-q4_k_m.gguf")
+model_path = os.path.expanduser("qwen2.5-3b-instruct-q4_k_m.gguf")
 if not os.path.exists(model_path):
-    model_path = os.path.expanduser("./qwen2.5-1.5b-instruct-q4_k_m.gguf")
+    model_path = os.path.expanduser("./qwen2.5-3b-instruct-q4_k_m.gguf")
     print(f"Modelo GGUF não encontrado em {model_path}.")
 assert os.path.exists(model_path), "Modelo GGUF não encontrado."
 
 llm = Llama(
     model_path=model_path,
-    n_ctx=2048,
-    n_threads=8,
-    n_gpu_layers=16,
-    verbose=False
+    n_ctx=4096,
+    n_threads=12,
+    n_gpu_layers=50,
+    n_batch=64,
+    verbose=False,
 )
 
 
-def hash_task_input(grid: list) -> str:
+def hash_task_input(grid):
     return hashlib.md5(json.dumps(grid).encode()).hexdigest()[:8]
 
 
-def extract_transform_function(code: str) -> str | None:
+def extract_transform_function(code):
     match = re.search(
         r"(def transform\(grid\):(?:\n|.)*?)(?=^def |\Z)", code, re.MULTILINE)
     if not match:
@@ -57,13 +50,13 @@ def extract_transform_function(code: str) -> str | None:
     return func_code
 
 
-def looks_hardcoded(code: str, task_input: list) -> bool:
+def looks_hardcoded(code, task_input):
     grid_flat = [str(n) for row in task_input for n in row]
     sample = "".join(grid_flat[:6])
     return sample in code.replace("\n", "").replace(" ", "")
 
 
-def test_transform_code(code: str, test_input: list = None, test_output: list = None) -> bool:
+def test_transform_code(code, test_input=None, test_output=None):
     try:
         scope = {}
         exec(code, scope)
@@ -79,7 +72,7 @@ def test_transform_code(code: str, test_input: list = None, test_output: list = 
         return False
 
 
-def save_bad_code(code: str, reason: str, grid: list):
+def save_bad_code(code, reason, grid):
     with open(".bad_llm.txt", "a", encoding="utf-8") as f:
         f.write("\n" + "=" * 60 + "\n")
         f.write(f"# Motivo: {reason}\n")
@@ -87,7 +80,7 @@ def save_bad_code(code: str, reason: str, grid: list):
         f.write(code.strip() + "\n")
 
 
-def prompt_llm(task_input: list, feedback: str = None, history: list = None, expected_output: list = None) -> str:
+def prompt_llm(task_input, feedback=None, history=None, expected_output=None):
     example_pool = [
         {"input": [[1, 2], [3, 4]], "expected_output": [[1, 0], [1, 0]],
             "code": "return [[cell % 2 for cell in row] for row in grid]"},
@@ -124,7 +117,8 @@ Input:
             combined_hash = hashlib.sha256(
                 (str(task_input) + h['code'].strip()).encode()).hexdigest()
             seen_codes.add(combined_hash)
-            prompt += f"\nTentativa #{h['attempt']}\nCódigo gerado:\n{h['code']}\nFeedback recebido:\n{h['feedback']}\n"
+            attempt_num = h.get('attempt', h.get('turn', '?'))
+            prompt += f"\nTentativa #{attempt_num}\nCódigo gerado:\n{h['code']}\nFeedback recebido:\n{h['feedback']}\n"
 
     if feedback:
         prompt += f"\n## Feedback do SageAxiom:\n{feedback}\n"
@@ -161,6 +155,16 @@ Escreva apenas a função Python válida chamada `transform(grid)`.
                 function_code, "Código hardcoded detectado", task_input)
             raise ValueError("Código parece hardcoded.")
 
+        try:
+            scope = {}
+            exec(function_code, scope)
+            if "transform" in scope:
+                manual_result = scope["transform"](task_input)
+                if manual_result == expected_output:
+                    return function_code
+        except Exception as e:
+            print(f"[ERRO] Execução direta falhou: {e}")
+
         if not test_transform_code(function_code, task_input, expected_output):
             save_bad_code(
                 function_code, "Erro ao executar transform() ou saída incorreta", task_input)
@@ -175,26 +179,37 @@ Escreva apenas a função Python válida chamada `transform(grid)`.
         return "def transform(grid): return grid"
 
 
-def prompt_beam_llm(task_input: list, prompt_template: str, beam_width: int = 1, feedback: str = None, expected_output: list = None):
+def prompt_beam_llm(task_input, beam_width=1, feedback=None, expected_output=None):
     candidates = []
     seen = set()
     history = []
     for i in range(beam_width):
         try:
             current_feedback = f"Falhou. Tente diferente da tentativa #{i+1}."
-            code = prompt_llm(task_input, prompt_template, feedback=current_feedback,
-                              history=history, expected_output=expected_output)
+            code = prompt_llm(
+                task_input,
+                feedback=current_feedback,
+                history=history,
+                expected_output=expected_output
+            )
             code_clean = code.strip()
             sim_threshold = 0.95
-            is_similar = any(difflib.SequenceMatcher(
-                None, code_clean, other).ratio() > sim_threshold for other in seen)
+            is_similar = any(
+                difflib.SequenceMatcher(
+                    None, code_clean, other).ratio() > sim_threshold
+                for other in seen
+            )
             if not is_similar:
                 seen.add(code_clean)
                 candidates.append(code_clean)
+                history.append({
+                    "attempt": i + 1,
+                    "code": code_clean,
+                    "feedback": current_feedback
+                })
             if len(candidates) >= beam_width:
                 break
-            history.append({"attempt": i+1, "code": code_clean,
-                           "feedback": current_feedback})
-        except Exception:
+        except Exception as e:
+            print(f"[ERRO] Tentativa {i+1} falhou: {e}")
             continue
     return candidates

@@ -1,131 +1,89 @@
-# Axiom: ARC Generalization Engine 🧠🔩
-
-> *A transformer-esque hallucination engine for the ARC-2025 challenge, now featuring token embeddings, temporal self-loathing, and even more regret per parameter.*
-
+---
+license: other
+license_name: qwen-research
+license_link: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/blob/main/LICENSE
+language:
+- en
+pipeline_tag: text-generation
+base_model: Qwen/Qwen2.5-3B-Instruct
+tags:
+- chat
 ---
 
-## 🧬 Overview
+# Qwen2.5-3B-Instruct-GGUF
 
-**Axiom** is a multi-stage encoder-decoder model designed for solving the Abstraction and Reasoning Corpus (ARC) tasks with few-shot adaptation. It now includes learned token embeddings and a temporal symmetry loss to guilt the model into consistency over time.
+## Introduction
 
----
+Qwen2.5 is the latest series of Qwen large language models. For Qwen2.5, we release a number of base language models and instruction-tuned language models ranging from 0.5 to 72 billion parameters. Qwen2.5 brings the following improvements upon Qwen2:
 
-## 🧱 Architecture Highlights
+- Significantly **more knowledge** and has greatly improved capabilities in **coding** and **mathematics**, thanks to our specialized expert models in these domains.
+- Significant improvements in **instruction following**, **generating long texts** (over 8K tokens), **understanding structured data** (e.g, tables), and **generating structured outputs** especially JSON. **More resilient to the diversity of system prompts**, enhancing role-play implementation and condition-setting for chatbots.
+- **Long-context Support** up to 128K tokens and can generate up to 8K tokens.
+- **Multilingual support** for over 29 languages, including Chinese, English, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, Vietnamese, Thai, Arabic, and more. 
 
-* **Input Encoding:**
+**This repo contains the instruction-tuned 3B Qwen2.5 model in the GGUF Format**, which has the following features:
+- Type: Causal Language Models
+- Training Stage: Pretraining & Post-training
+- Architecture: transformers with RoPE, SwiGLU, RMSNorm, Attention QKV bias and tied word embeddings
+- Number of Parameters: 3.09B
+- Number of Paramaters (Non-Embedding): 2.77B
+- Number of Layers: 36
+- Number of Attention Heads (GQA): 16 for Q and 2 for KV
+- Context Length: Full 32,768 tokens and generation 8192 tokens
+- Quantization: q2_K, q3_K_M, q4_0, q4_K_M, q5_0, q5_K_M, q6_K, q8_0
 
-  * 20×20 integer grids representing color IDs (0–9).
-  * Now mapped through a `TokenEmbedding` layer to a dense continuous space, because one-hot was getting lonely.
+For more details, please refer to our [blog](https://qwenlm.github.io/blog/qwen2.5/), [GitHub](https://github.com/QwenLM/Qwen2.5), and [Documentation](https://qwen.readthedocs.io/en/latest/).
 
-* **Token Embedding:**
+## Quickstart
 
-  * `Embedding(10 → hidden_dim)`, allowing the model to learn semantic priors over token IDs like a big boy.
+Check out our [llama.cpp documentation](https://qwen.readthedocs.io/en/latest/run_locally/llama.cpp.html) for more usage guide.
 
-* **Temporal Symmetry Loss:**
+We advise you to clone [`llama.cpp`](https://github.com/ggerganov/llama.cpp) and install it following the official guide. We follow the latest version of llama.cpp. 
+In the following demonstration, we assume that you are running commands under the repository `llama.cpp`.
 
-  * Because if your output sequence isn’t symmetric over time, what even *is* the point of sequential data?
-  * Penalizes inconsistency between forward and reverse output sequences.
+Since cloning the entire repo may be inefficient, you can manually download the GGUF file that you need or use `huggingface-cli`:
+1. Install
+   ```shell
+   pip install -U huggingface_hub
+   ```
+2. Download:
+   ```shell
+   huggingface-cli download Qwen/Qwen2.5-3B-Instruct-GGUF qwen2.5-3b-instruct-q5_k_m.gguf --local-dir . --local-dir-use-symlinks False
+   ```
 
-* **Early Projection:**
+For users, to achieve chatbot-like experience, it is recommended to commence in the conversation mode:
 
-  * 1×1 `Conv2D` to project token embeddings to feature maps.
-
-* **Encoder:**
-
-  * Composed of fractal/residual blocks, all painfully handcrafted.
-
-* **Memory Modules:**
-
-  * `EpisodicMemory`: Collects representations across time like a nostalgic hoarder.
-  * `LongTermMemory`: Fixed-size, non-learnable slab for associative recall.
-
-* **Attention:**
-
-  * Multi-head self-attention, applied wherever context might be ignored.
-  * Also included: attention over memory, because even memories deserve to be seen.
-
-* **ChoiceHypothesisModule:**
-
-  * Evaluates multiple potential transformations.
-  * Learns to pick one (or softly blend them all like an indecisive artist).
-  * Entropy loss punishes fence-sitting.
-
-* **TaskPainSystem:**
-
-  * Computes per-sample "pain" based on prediction error.
-  * Learns to gate exploration, alpha blending, and self-worth accordingly.
-  * Updates historical threshold via `ThresholdMemory`.
-
-* **Blending and Refinement:**
-
-  * Blends current input with memory-driven hallucinations.
-  * Uses a learnable mix of `refiner` and `fallback` predictions.
-  * Tries not to panic.
-
-* **Loss Functions:**
-
-  * Pixel-wise mean square error.
-  * Bounding box alignment (`BoundingBoxDiscipline`).
-  * Symmetry regularization.
-  * Trait loss (confidence, curiosity, resilience, etc.)
-  * Temporal symmetry loss across logits over time.
-  * Miscellaneous internal pain signals.
-
----
-
-## 🔧 Training
-
-Yes, it trains. Here's how:
-
-```python
-for epoch in range(epochs):
-    with tf.GradientTape() as tape:
-        logits = model(x_seq, y_seq, training=True)
-        loss = loss_fn(y_seq[:, -1], logits) + tf.add_n(model.losses)
-    grads = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(grads, model.trainable_variables))
+```shell
+./llama-cli -m <gguf-file-path> \
+    -co -cnv -p "You are Qwen, created by Alibaba Cloud. You are a helpful assistant." \
+    -fa -ngl 80 -n 512
 ```
 
-The longer you train, the more painful and accurate it gets. It’s like therapy, but with gradients.
 
----
+## Evaluation & Performance
 
-## 📈 Metrics
+Detailed evaluation results are reported in this [📑 blog](https://qwenlm.github.io/blog/qwen2.5/).
 
-* `Pixel Accuracy`: Fraction of correctly predicted pixels.
-* `Perfect Match`: If every pixel matches, you win.
-* Logged metrics include:
+For quantized models, the benchmark results against the original bfloat16 models can be found [here](https://qwen.readthedocs.io/en/latest/benchmark/quantization_benchmark.html)
 
-  * `Pain`
-  * `Adjusted Pain`
-  * `Exploration Gate`
-  * `Alpha`
-  * `BBox Penalty`
-  * `Temporal Symmetry Loss` (because self-consistency matters)
+For requirements on GPU memory and the respective throughput, see results [here](https://qwen.readthedocs.io/en/latest/benchmark/speed_benchmark.html).
 
----
+## Citation
 
-## 🗂 Files
+If you find our work helpful, feel free to give us a cite.
 
-* `core.py`: Main model (`SageAxiom`) class.
-* `layers.py`: All custom layers, including memories, pain, attention, etc.
-* `utils.py`: All utilities for Axiom.
-* `train_axiom.py`: Example training loop.
-* `LICENSE.txt`: [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/).
-* `README.md`: You’re reading it. Whoa.
-
----
-
-## 📜 License
-
-**CC BY-ND 4.0** – You may use, share, and cite this repo. But don’t remix, extend, or pretend you wrote it. That’s what the model’s for.
-
----
-
-## 🧪 Notes
-
-* `TokenEmbedding` replaces brittle one-hot encoding with learned representations.
-* `Temporal Symmetry Loss` keeps the model’s timeline spiritually aligned.
-* Losses and gates are emotionally unstable, but statistically reliable.
-
-> *“The Axiom doesn’t solve ARC problems. It copes with them.”*
+```
+@misc{qwen2.5,
+    title = {Qwen2.5: A Party of Foundation Models},
+    url = {https://qwenlm.github.io/blog/qwen2.5/},
+    author = {Qwen Team},
+    month = {September},
+    year = {2024}
+}
+@article{qwen2,
+      title={Qwen2 Technical Report}, 
+      author={An Yang and Baosong Yang and Binyuan Hui and Bo Zheng and Bowen Yu and Chang Zhou and Chengpeng Li and Chengyuan Li and Dayiheng Liu and Fei Huang and Guanting Dong and Haoran Wei and Huan Lin and Jialong Tang and Jialin Wang and Jian Yang and Jianhong Tu and Jianwei Zhang and Jianxin Ma and Jin Xu and Jingren Zhou and Jinze Bai and Jinzheng He and Junyang Lin and Kai Dang and Keming Lu and Keqin Chen and Kexin Yang and Mei Li and Mingfeng Xue and Na Ni and Pei Zhang and Peng Wang and Ru Peng and Rui Men and Ruize Gao and Runji Lin and Shijie Wang and Shuai Bai and Sinan Tan and Tianhang Zhu and Tianhao Li and Tianyu Liu and Wenbin Ge and Xiaodong Deng and Xiaohuan Zhou and Xingzhang Ren and Xinyu Zhang and Xipin Wei and Xuancheng Ren and Yang Fan and Yang Yao and Yichang Zhang and Yu Wan and Yunfei Chu and Yuqiong Liu and Zeyu Cui and Zhenru Zhang and Zhihao Fan},
+      journal={arXiv preprint arXiv:2407.10671},
+      year={2024}
+}
+```

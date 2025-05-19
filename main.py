@@ -13,9 +13,11 @@ from agent_chat import *
 import matplotlib.pyplot as plt
 
 # === Hiperparâmetros e limites ===
-EPOCHS = 1
+LEARNING_RATE = 0.001
+BATCH_SIZE = 64
+EPOCHS = 40
 TARGET_TASKS = 21
-EXPECTED_HOURS = 1 / 3
+EXPECTED_HOURS = 2.5
 TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
 SECONDS_PER_TASK = (TIME_LIMIT_MINUTES * 60) / TARGET_TASKS
 
@@ -49,11 +51,11 @@ y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
 # === Treinamento ===
 model = SageAxiom(hidden_dim=128, use_hard_choice=False)
 model.compile(optimizer=tf.keras.optimizers.Adam(
-    learning_rate=0.001), loss=None, metrics=[])
+    learning_rate=LEARNING_RATE), loss=None, metrics=[])
 model(X_train[:1])
 train_start = time.time()
 history = model.fit(X_train, y_train, validation_data=(
-    X_val, y_val), epochs=EPOCHS, verbose=1)
+    X_val, y_val), epochs=EPOCHS, batch_size=BATCH_SIZE, verbose=1)
 training_duration = profile_time(train_start, "Tempo de treinamento")
 
 plot_history(history)
