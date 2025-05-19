@@ -1,14 +1,10 @@
 import tensorflow as tf
-from transformers import BertTokenizer, TFBertModel
 from layers import *
 from utils import (
     temporal_symmetry_loss,
     compute_all_losses,
     BoundingBoxDiscipline
 )
-
-bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-bert_model = TFBertModel.from_pretrained("bert-base-uncased")
 
 
 class SageAxiom(tf.keras.Model):
@@ -18,10 +14,8 @@ class SageAxiom(tf.keras.Model):
         self.use_hard_choice = use_hard_choice
 
         self.token_embedding = TokenEmbedding(vocab_size=10, dim=hidden_dim)
-
         self.early_proj = tf.keras.layers.Conv2D(
             hidden_dim, 1, activation='relu')
-        self.text_proj = tf.keras.layers.Dense(self.hidden_dim)
         self.encoder = EnhancedEncoder(hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
         self.pos_enc = PositionalEncoding2D(hidden_dim)
@@ -58,21 +52,19 @@ class SageAxiom(tf.keras.Model):
         self.refine_weight = self.add_weight(
             name="refine_weight", shape=(), initializer=tf.keras.initializers.Constant(0.5), trainable=False
         )
+        # self.task_encoder = TaskEncoder(hidden_dim)
 
+        # === Corrigido: Dense fora do call ===
         self.pool_dense1 = tf.keras.layers.Dense(
             self.hidden_dim, activation='relu')
         self.pool_dense2 = tf.keras.layers.Dense(self.hidden_dim)
 
-    def embed_text(self, prompt):
-        inputs = bert_tokenizer(
-            prompt, return_tensors="tf", padding=True, truncation=True)
-        outputs = bert_model(**inputs)
-        cls_token = outputs.last_hidden_state[:, 0, :]
-        return self.text_proj(cls_token)
 
-    def from_prompt_and_grid(self, text_prompt, x_seq):
-        text_embed = self.embed_text(text_prompt)
-        return self(x_seq, text_embed=text_embed, training=False)
+    # def encode_task(self, input_tensor, output_tensor):
+    #     x_in = tf.expand_dims(input_tensor, axis=0)
+    #     x_out = tf.expand_dims(output_tensor, axis=0)
+    #     return self.task_encoder({"x_in": x_in, "x_out": x_out})
+
 
     def train_step(self, data):
         x, y = data
@@ -92,7 +84,7 @@ class SageAxiom(tf.keras.Model):
         self.val_loss_tracker.update_state(loss)
         return {"loss": self.val_loss_tracker.result()}
 
-    def call(self, x_seq, y_seq=None, training=False, text_embed=None):
+    def call(self, x_seq, y_seq=None, training=False):
         if x_seq.shape.rank != 4:
             raise ValueError(
                 "Esperado input de shape [batch, height, width, 10]")
@@ -111,16 +103,15 @@ class SageAxiom(tf.keras.Model):
         x_flat = tf.keras.layers.GlobalAveragePooling2D()(xt)
         x_flat = self.pool_dense1(x_flat)
         x_flat = self.pool_dense2(x_flat)
-
-        if text_embed is not None:
-            x_flat += text_embed
-
         out, [state] = self.agent(x_flat, [state])
         self.memory.write(out)
 
-        memory_tensor = tf.expand_dims(self.memory.read_all(), axis=0)
+        memory_tensor = tf.expand_dims(self.memory.read_all(), axis=0)  # [1, 16, 128]
+
         memory_context = self.attend_memory(memory_tensor, state)
         long_term_context = self.longterm.match_context(state)
+        # garante [batch, hidden_dim]
+
         full_context = tf.concat(
             [state, memory_context, long_term_context], axis=-1)
 
@@ -162,6 +153,9 @@ class SageAxiom(tf.keras.Model):
                                 blended, training=training)
         loss_dict = compute_all_losses(
             final_logits, y_seq, blended, pain["pain"])
+
+
+
         total_loss = tf.add_n(list(loss_dict.values()))
 
         if training:
@@ -174,3 +168,4 @@ class SageAxiom(tf.keras.Model):
     @property
     def metrics(self):
         return [self.loss_tracker, self.val_loss_tracker]
+

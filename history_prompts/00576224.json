@@ -1,0 +1,137 @@
+[
+  {
+    "attempt": 1,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 2,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 3,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 4,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 5,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 6,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 7,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 8,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 9,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 10,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 11,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 12,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 13,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 14,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 15,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 16,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 17,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 18,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 19,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 20,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 21,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 22,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 23,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 24,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 25,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 26,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  },
+  {
+    "attempt": 27,
+    "feedback": "[ERRO ao gerar descri\u00e7\u00e3o]: operands could not be broadcast together with shapes (2,2) (30,30) ",
+    "code": "def transform(grid): return grid"
+  }
+]

@@ -1,0 +1,6 @@
+[22:12:01] INFO: [INFO] Preparando dados do SageAxiom...
+[22:12:57] INFO: [PERF] Tempo de treinamento: 0m 54s (54.05 segundos)
+[22:12:57] INFO: [INFO] Plot do treinamento salvo: training_plot.png
+[22:13:02] INFO: [INFO] Matriz de confusão salva: confusion_matrix.png
+[22:13:02] INFO: [INFO] Relatório de métricas por classe salvo: per_class_metrics.json
+[22:13:02] INFO: [INFO] Avaliando task 00576224 (1/21)

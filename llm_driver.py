@@ -1,10 +1,19 @@
-import random
-import hashlib
-import difflib
-import json
-import os
-import re
 from llama_cpp import Llama
+import re
+import os
+import json
+import difflib
+import hashlib
+import random
+prompt_template = """
+Given the following input grid (in JSON), write a Python function named `transform(grid)` that produces the expected ARC puzzle output.
+
+Input grid:
+{grid}
+
+Respond only with Python code. No explanations.
+"""
+
 
 # === Inicialização do modelo Qwen ===
 model_path = os.path.expanduser("qwen2.5-1.5b-instruct-q4_k_m.gguf")
@@ -15,20 +24,11 @@ assert os.path.exists(model_path), "Modelo GGUF não encontrado."
 
 llm = Llama(
     model_path=model_path,
-    n_ctx=4096,
+    n_ctx=2048,
     n_threads=8,
     n_gpu_layers=16,
     verbose=False
 )
-
-prompt_template = """
-Given the following input grid (in JSON), write a Python function named `transform(grid)` that produces the expected ARC puzzle output.
-
-Input grid:
-{grid}
-
-Respond only with Python code. No explanations.
-"""
 
 
 def hash_task_input(grid: list) -> str:
@@ -63,14 +63,16 @@ def looks_hardcoded(code: str, task_input: list) -> bool:
     return sample in code.replace("\n", "").replace(" ", "")
 
 
-def test_transform_code(code: str) -> bool:
+def test_transform_code(code: str, test_input: list = None, test_output: list = None) -> bool:
     try:
         scope = {}
         exec(code, scope)
         if "transform" not in scope:
             print("[ERRO] Função 'transform' não está definida.")
             return False
-        result = scope["transform"]([[1, 2], [3, 4]])
+        result = scope["transform"](test_input or [[1, 2], [3, 4]])
+        if test_output:
+            return result == test_output
         return isinstance(result, list)
     except Exception as e:
         print(f"[ERRO] Teste falhou: {e}")
@@ -85,7 +87,7 @@ def save_bad_code(code: str, reason: str, grid: list):
         f.write(code.strip() + "\n")
 
 
-def prompt_llm(task_input: list, prompt_template: str, feedback: str = None, history: list = None) -> str:
+def prompt_llm(task_input: list, feedback: str = None, history: list = None, expected_output: list = None) -> str:
     example_pool = [
         {"input": [[1, 2], [3, 4]], "expected_output": [[1, 0], [1, 0]],
             "code": "return [[cell % 2 for cell in row] for row in grid]"},
@@ -97,38 +99,27 @@ def prompt_llm(task_input: list, prompt_template: str, feedback: str = None, his
     example_grid = random.choice(example_pool)
 
     prompt = f"""
-Você é um solucionador de puzzles visuais baseados em grids do ARC.
+Dado um grid de entrada, escreva uma função Python `transform(grid)` que gere o grid de saída esperado.
 
-Cada grid é uma matriz 2D de inteiros representando pixels coloridos.
-
-## Tarefa
-Dado um grid de entrada, escreva uma função Python chamada `transform(grid)` que retorna o grid de saída esperado.
-
-## Contra-exemplo (não siga este modelo):
-Input:
-{json.dumps(example_grid["input"])}
-
-Output esperado:
-{json.dumps(example_grid["expected_output"])}
-
-Função incorreta (exemplo apenas para ilustrar lógica, não para copiar):
+Exemplo incorreto:
+Input: {json.dumps(example_grid["input"])}
+Esperado: {json.dumps(example_grid["expected_output"])}
 ```python
 def transform(grid):
     {example_grid["code"]}
 ```
 
-## Sua tarefa
-Agora, resolva a transformação a seguir:
-
-Input grid:
+Sua tarefa:
+Input:
 {json.dumps(task_input)}
-
-Não repita a lógica usada acima. Gere uma função nova e criativa baseada no input fornecido.
 """
+
+    if expected_output:
+        prompt += f"\nExpected output:\n{json.dumps(expected_output)}"
 
     seen_codes = set()
     if history:
-        prompt += "\n## Histórico de tentativas anteriores:\n"
+        prompt += "\n# Histórico:\n"
         for h in history[-3:]:
             combined_hash = hashlib.sha256(
                 (str(task_input) + h['code'].strip()).encode()).hexdigest()
@@ -136,15 +127,10 @@ Não repita a lógica usada acima. Gere uma função nova e criativa baseada no 
             prompt += f"\nTentativa #{h['attempt']}\nCódigo gerado:\n{h['code']}\nFeedback recebido:\n{h['feedback']}\n"
 
     if feedback:
-        prompt += f"\n## Feedback mais recente do SageAxiom:\n{feedback}\n"
+        prompt += f"\n## Feedback do SageAxiom:\n{feedback}\n"
 
     prompt += """
-Evite repetir padrões anteriores, especialmente soluções que apenas rotacionam ou espelham a entrada como:
-- `return [row[::-1] for row in reversed(grid)]`
-- `return list(map(list, zip(*grid[::-1])))`
-
-A função deve ser genérica, operar com base em padrões lógicos ou visuais, e não deve conter valores fixos vindos do input.
-Não inclua `input()`, `print()` ou exemplos de uso.
+Evite repetir padrões anteriores.
 Escreva apenas a função Python válida chamada `transform(grid)`.
 """
 
@@ -154,7 +140,7 @@ Escreva apenas a função Python válida chamada `transform(grid)`.
                 {"role": "system", "content": "Você é um especialista em lógica visual e puzzles do ARC."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.5
+            temperature=0.7
         )
         full_code = result['choices'][0]['message']['content']
         function_code = extract_transform_function(full_code)
@@ -175,10 +161,11 @@ Escreva apenas a função Python válida chamada `transform(grid)`.
                 function_code, "Código hardcoded detectado", task_input)
             raise ValueError("Código parece hardcoded.")
 
-        if not test_transform_code(function_code):
+        if not test_transform_code(function_code, task_input, expected_output):
             save_bad_code(
-                function_code, "Erro ao executar transform()", task_input)
-            raise ValueError("transform(grid) falhou no teste.")
+                function_code, "Erro ao executar transform() ou saída incorreta", task_input)
+            raise ValueError(
+                "transform(grid) falhou no teste ou produziu saída incorreta.")
 
         return function_code
 
@@ -188,15 +175,15 @@ Escreva apenas a função Python válida chamada `transform(grid)`.
         return "def transform(grid): return grid"
 
 
-def prompt_beam_llm(task_input: list, prompt_template: str, beam_width: int = 3, feedback: str = None):
+def prompt_beam_llm(task_input: list, prompt_template: str, beam_width: int = 1, feedback: str = None, expected_output: list = None):
     candidates = []
     seen = set()
     history = []
-    for i in range(beam_width * 3):
+    for i in range(beam_width):
         try:
-            current_feedback = f"Tentativa anterior falhou. Tente uma abordagem diferente da tentativa #{i+1}."
-            code = prompt_llm(task_input, prompt_template,
-                              feedback=current_feedback, history=history)
+            current_feedback = f"Falhou. Tente diferente da tentativa #{i+1}."
+            code = prompt_llm(task_input, prompt_template, feedback=current_feedback,
+                              history=history, expected_output=expected_output)
             code_clean = code.strip()
             sim_threshold = 0.95
             is_similar = any(difflib.SequenceMatcher(
