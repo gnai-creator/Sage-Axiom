@@ -12,7 +12,7 @@ from metrics_utils import (
     plot_confusion,
     plot_attempts_stats,
 )
-from sage_dabate_loop import triple_conversational_loop
+from sage_dabate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
@@ -120,7 +120,7 @@ while time.time() < end_time:
     input_grid = task["train"][0]["input"]
     log(f"[INFO] Avaliando task {task_id} ({total_tasks + 1})")
 
-    result = triple_conversational_loop(models, input_grid, max_rounds=10000)
+    result = conversational_loop(models, input_grid, max_rounds=10000)
 
     if result["success"]:
         log(f"[INFO] Task {task_id} avaliada com sucesso.")

@@ -1,21 +1,19 @@
-# sage_dabate_loop.py
-
 import json
 import tensorflow as tf
 from runtime_utils import log, pad_to_shape
 from collections import defaultdict
 
-
-def triple_conversational_loop(models, input_grid, max_rounds=3):
+def conversational_loop(models, input_grid, max_rounds=3):
     """
-    Recebe três modelos SageAxiom treinados e realiza um debate triplo.
+    Recebe modelos SageAxiom treinados e realiza um debate triplo.
     Cada modelo propõe uma saída baseada no grid de entrada e texto.
     O vencedor é determinado por votação majoritária.
-    Realiza múltiplas rodadas até obter maioria ou atingir o limite.
     """
     def generate_response(model, prompt):
         x = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
         x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
+        if isinstance(prompt, str):
+            prompt = [prompt]
         y_pred = model.from_prompt_and_grid(prompt, x_onehot)
         return tf.argmax(y_pred["logits"][0], axis=-1).numpy().tolist()
 
