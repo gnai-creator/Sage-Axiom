@@ -1,8 +1,7 @@
 import json
 import tensorflow as tf
-from functions import log, pad_to_shape
 from collections import defaultdict
-
+from runtime_utils import log, pad_to_shape
 
 def triple_conversational_loop(models, input_grid):
     """

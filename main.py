@@ -7,15 +7,14 @@ import numpy as np
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
 from core import SageAxiom
-from functions import *
-from agent_chat import *
 from metrics_utils import (
     plot_history,
     plot_confusion,
     plot_attempts_stats,
-    profile_time,
-    log
+    
 )
+from sage_dabate_loop import triple_conversational_loop
+from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 
 # === Hiperparâmetros e limites ===
