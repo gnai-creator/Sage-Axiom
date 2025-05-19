@@ -1,6 +1,9 @@
 import json
 import tensorflow as tf
-from functions import log, pad_to_shape profile_time, plot_history, plot_attempts_stats
+from functions import log, pad_to_shape
+from collections import defaultdict
+
+
 def triple_conversational_loop(models, input_grid):
     """
     Recebe três modelos SageAxiom treinados e realiza um debate triplo.
@@ -8,9 +11,6 @@ def triple_conversational_loop(models, input_grid):
     O vencedor é determinado por votação majoritária.
     Retorna a melhor saída escolhida, se houver consenso.
     """
-    import random
-    from collections import defaultdict
-
     def generate_response(model, prompt):
         x = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
         x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
@@ -18,17 +18,20 @@ def triple_conversational_loop(models, input_grid):
         return tf.argmax(y_pred["logits"][0], axis=-1).numpy().tolist()
 
     prompt_text = f"Input grid:\n{json.dumps(input_grid)}"
+    log("[INFO] Gerando respostas dos modelos para o grid de entrada")
+    log(prompt_text)
 
-    # Cada modelo propõe uma solução
     responses = []
-    for model in models:
+    for i, model in enumerate(models):
         try:
             output = generate_response(model, prompt_text)
+            log(f"[INFO] Modelo {i+1} produziu uma saída com sucesso")
+            log(f"[DEBUG] Output do modelo {i+1}: {output}")
             responses.append(output)
         except Exception as e:
+            log(f"[ERRO] Modelo {i+1} falhou ao gerar resposta: {e}")
             responses.append(None)
 
-    # Filtra respostas válidas
     valid_responses = [r for r in responses if r is not None]
 
     def count_votes(candidates):
@@ -41,8 +44,11 @@ def triple_conversational_loop(models, input_grid):
 
     if valid_responses:
         voted_output, success = count_votes(valid_responses)
+        log("[INFO] Votação realizada com sucesso")
+        log(f"[RESULTADO] Output vencedor: {voted_output}")
     else:
         voted_output, success = None, False
+        log("[WARN] Nenhuma resposta válida recebida dos modelos")
 
     return {
         "output": voted_output,

@@ -27,6 +27,17 @@ EXPECTED_HOURS = 2.5
 TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
 SECONDS_PER_TASK = (TIME_LIMIT_MINUTES * 60) / TARGET_TASKS
 
+# === Log para arquivo ===
+log_file = f"full_log_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+import logging
+logging.basicConfig(
+    filename=log_file,
+    filemode='w',
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    datefmt='%H:%M:%S',
+    level=logging.INFO
+)
+
 # === Carregamento de dados ===
 with open("arc-agi_test_challenges.json") as f:
     tasks = json.load(f)
@@ -92,7 +103,7 @@ for task_id, task in list(tasks.items())[:TARGET_TASKS]:
     input_grid = task["train"][0]["input"]
     log(f"[INFO] Avaliando task {task_id} ({total_tasks + 1}/{TARGET_TASKS})")
 
-    result = triple_conversational_loop(models, input_grid)
+    result = triple_conversational_loop(models, input_grid, log)
 
     if result["success"]:
         correct_tasks += 1
@@ -109,7 +120,7 @@ for task_id, task in list(tasks.items())[:TARGET_TASKS]:
             for model_idx, candidate in enumerate(entry["candidates"]):
                 md.write(f"### Modelo {model_idx+1}\n\n")
                 md.write("```python\n")
-                md.write(candidate + "\n")
+                md.write(json.dumps(candidate) + "\n")
                 md.write("```\n\n")
             md.write(f"**Votos**: {entry['votes']}\n\n")
             md.write(f"**Ganhador**: Modelo {entry['winner']}\n\n")
@@ -135,4 +146,5 @@ log(f"[INFO] Score estimado: {score:.2f}%")
 projection = (correct_tasks / 250) * 100
 log(f"[INFO] Projeção final aproximada: {projection:.2f}%")
 log(f"[INFO] Votos por modelo: {model_vote_stats}")
+log(f"[INFO] Log completo salvo em {log_file}")
 log("[INFO] Pipeline encerrado.")
