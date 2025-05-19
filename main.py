@@ -70,7 +70,11 @@ models = []
 for i in range(NUMBER_OF_MODELS):
     log(f"[INFO] Iniciando treino do modelo SageAxiom_{i+1}...")
     model = SageAxiom(hidden_dim=128, use_hard_choice=False)
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss=None, metrics=[])
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=["accuracy"]
+    )
 
     dummy_x = tf.random.uniform((1, 30, 30, 10))
     dummy_text = model.embed_text(["dummy input"])

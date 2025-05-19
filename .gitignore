@@ -1,6 +1,9 @@
 tf-env/
 __pychache__/*
-
+sage_model*
+checkpoint*
+history*
+log_*
 Qwen3-32B-Q4_K_M.gguf
 Qwen3-14B-Q4_K_M.gguf
 qwen*

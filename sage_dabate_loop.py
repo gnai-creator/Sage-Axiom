@@ -5,7 +5,7 @@ from collections import defaultdict
 
 def conversational_loop(models, input_grid, max_rounds=3):
     """
-    Recebe modelos SageAxiom treinados e realiza um debate triplo.
+    Recebe modelos SageAxiom treinados e realiza um debate iterativo.
     Cada modelo propõe uma saída baseada no grid de entrada e texto.
     O vencedor é determinado por votação majoritária.
     """
@@ -35,8 +35,13 @@ def conversational_loop(models, input_grid, max_rounds=3):
                 log(f"[ERRO] Modelo {i+1} falhou ao gerar resposta: {e}")
                 responses.append(None)
 
-        all_responses.append(responses)
         valid_responses = [r for r in responses if r is not None]
+
+        round_entry = {
+            "candidates": responses,
+            "votes": [],
+            "winner": None
+        }
 
         def count_votes(candidates):
             votes = defaultdict(int)
@@ -48,7 +53,13 @@ def conversational_loop(models, input_grid, max_rounds=3):
 
         if valid_responses:
             voted_output, success = count_votes(valid_responses)
+            round_entry["votes"] = [json.dumps(r) for r in valid_responses]
+
             if success:
+                winner_idx = responses.index(voted_output)
+                round_entry["winner"] = winner_idx
+                all_responses.append(round_entry)
+
                 log(f"[INFO] Votação encerrada com maioria na rodada {round_num}")
                 log(f"[RESULTADO] Output vencedor: {voted_output}")
                 return {
@@ -57,8 +68,9 @@ def conversational_loop(models, input_grid, max_rounds=3):
                     "rounds": round_num,
                     "history": all_responses
                 }
-        else:
-            log("[WARN] Nenhuma resposta válida recebida nesta rodada")
+
+        all_responses.append(round_entry)
+        log("[WARN] Nenhuma resposta válida recebida nesta rodada")
 
     log("[INFO] Debate finalizado sem maioria")
     return {
